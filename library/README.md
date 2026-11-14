@@ -59,9 +59,13 @@ reader.FrameReceived += (_, e) =>
 };
 ```
 
-Measured on 20m FT8 at a 20 kHz span, the refined trace's floor is about 2.4
-times smoother than the raw rows, about level with an SDRplay RSP on the radio's
-IF output. It still comes 25 times a second. Use `Levels` for anything that
+The refined trace still comes 25 times a second. Against an SDRplay RSP on the
+radio's IF output, it showed more weak signals at the 1 and 2 kHz spans and
+from 200 kHz up, about as many from 5 to 20 kHz, and fewer at 50 and 100 kHz.
+The measurements are in
+[docs/comparison.md](https://github.com/mm5agm/Yaesu_ACC_Spectrum/blob/main/docs/comparison.md),
+and the advice that comes from them in
+[docs/best-picture.md](https://github.com/mm5agm/Yaesu_ACC_Spectrum/blob/main/docs/best-picture.md). Use `Levels` for anything that
 measures.
 
 The events come on the reader's own thread. Hand the work to your UI thread if
