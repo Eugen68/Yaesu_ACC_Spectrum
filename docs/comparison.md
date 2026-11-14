@@ -367,7 +367,14 @@ develop, and will be in the next release after v2.5.5-pre4.
   46 dB high at 1389 kHz. YWC now listens for the SDRplay API's overload
   reports:
   - While an overload lasts, it raises the gain reduction 3 dB at a time.
-  - After 30 s without one, it lowers it again.
+  - After 30 s without one, it lowers it again, 3 dB every 5 s, back to the
+    start. On moving from 160 m at 1 MHz to 20 m, the receiver at the top
+    stepped from 55 back to 40, and the other from 43 to 40, within 45 s, with
+    no overload on the way down.
+  - If lowering it brings the overload straight back, it holds that level for
+    10 minutes, so the floor doesn't keep jumping. On 160 m at 1 MHz both
+    receivers overloaded again within 40 ms of a step down, and neither
+    stepped down again in the next two minutes.
   - With this, the false signal was 8 to 10 dB, as it was with the AGC on.
   - It costs no sensitivity: with the gain reduction raised by 15 dB, the 20 m
     floor fell by 14.6 dB, so the radio's noise still set the floor.
