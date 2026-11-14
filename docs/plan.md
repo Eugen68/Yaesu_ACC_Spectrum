@@ -207,7 +207,7 @@ Notes:
 ## Before connecting the ESP32: check the levels
 
 The step-by-step procedure, with the scope settings and the pass and fail levels,
-is in "Safe first connection" in the [README](../README.md#safe-first-connection).
+is in "Safe first connection" in the [README](hardware.md#safe-first-connection).
 In short: measure every line with the radio on and nothing else connected, and
 connect the ESP32 only if every line is 3.3 V or less.
 

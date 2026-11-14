@@ -15,7 +15,7 @@ can blow a fuse or damage the radio's main board. Read
 
 ## 1. What you need
 
-- **The parts in [What I used](../README.md#what-i-used):** a 13-pin mini-DIN
+- **The parts in [What I used](hardware.md#what-i-used):** a 13-pin mini-DIN
   extension cable (male to female), a ready-made 13-pin plug with wires, an
   ESP32-S3 DevKitC-1 N16R8 on a screw-terminal breakout board, six 470 ohm
   resistors and a short link wire.
@@ -27,7 +27,7 @@ can blow a fuse or damage the radio's main board. Read
 
 **Check your board's LED pin.** Version 1.1 of the DevKitC-1 has its LED on
 GPIO38, which this project uses for ACC pin 12. The HW678 board I used has it on
-GPIO48. See [The board's LED](../README.md#the-boards-led).
+GPIO48. See [The board's LED](hardware.md#the-boards-led).
 
 ## 2. Make up the lead
 
@@ -39,7 +39,7 @@ cable: the plug goes into its female end, and its male end goes into the radio.
    are those of the Icom lead I used, and yours may differ. Pin numbers are as in
    the radio's manual.
 2. **Mark ACC pin 2 as ground.** On the Icom lead it's red; see
-   [Yes, ground is the red wire](../README.md#yes-ground-is-the-red-wire).
+   [Yes, ground is the red wire](hardware.md#yes-ground-is-the-red-wire).
 3. **Insulate the six wires that aren't used,** each with its own heat-shrink:
    pins 1 (power on), 7, 8 (13.8 V behind a fuse), 9 (PTT), 10 (SEND) and 13 (a
    second ground). Pin 8 is the one that matters most.
@@ -67,7 +67,7 @@ heartbeat on pin 12 once a second, and only streams its scope data when it hears
 that heartbeat come back on pin 11. The link sends it straight back. The firmware
 never drives GPIO38 or GPIO39, so the link stays on for good.
 
-The picture and more detail are in [Wiring](../README.md#wiring).
+The picture and more detail are in [Wiring](hardware.md#wiring).
 
 ## 4. Flash the firmware
 
@@ -114,8 +114,8 @@ go in.
    back on 38 and 39.
 
 With a scope, you can also watch the lines while the radio streams.
-[Safe first connection](../README.md#safe-first-connection) has the full
-procedure, and [Oscilloscope traces](../README.md#oscilloscope-traces) shows what
+[Safe first connection](hardware.md#safe-first-connection) has the full
+procedure, and [Oscilloscope traces](scope-traces.md) shows what
 each line looked like on mine.
 
 ## 6. Connect and power up
