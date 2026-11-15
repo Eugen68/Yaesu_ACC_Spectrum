@@ -215,8 +215,8 @@ connect the ESP32 only if every line is 3.3 V or less.
 
 | Source | Licence | What it gives me |
 |---|---|---|
-| [SLTPLAN/FTDX10_WF_HUB/ESP32](https://github.com/SLTPLAN/FTDX10_WF_HUB/tree/main/ESP32) | **None** (asked in [issue #1](https://github.com/SLTPLAN/FTDX10_WF_HUB/issues/1)) | Complete ESP32-S3 firmware `DX10_WF.ino` plus `remote.py` |
-| [SLTPLAN/FTDX10_WF](https://github.com/SLTPLAN/FTDX10_WF) | None | The PC side of the same project |
+| [SLTPLAN/FTDX10_WF_HUB/ESP32](https://github.com/SLTPLAN/FTDX10_WF_HUB/tree/main/ESP32) | MIT, added 2026-11-15 after [issue #1](https://github.com/SLTPLAN/FTDX10_WF_HUB/issues/1) | Complete ESP32-S3 firmware `DX10_WF.ino` plus `remote.py` |
+| [SLTPLAN/FTDX10_WF](https://github.com/SLTPLAN/FTDX10_WF) | MIT, added 2026-11-15 | The PC side of the same project |
 | [ratmandu/YaesuWFTesting](https://github.com/ratmandu/YaesuWFTesting) | MIT | First published frame layout and test tools |
 | [CarrierWaveApp/sculan10-protocol](https://github.com/CarrierWaveApp/sculan10-protocol) | MIT | Written spec of the SCU-LAN10 protocol |
 | [sanjint.com/yaesu-ftdx10-scope](https://sanjint.com/yaesu-ftdx10-scope) | — | Write-up of the ACC signals on the FTdx10 |
@@ -275,6 +275,8 @@ on 2026-11-10, after both stages of the level checks passed:
   it and the radio would both drive pin 11, so the link would have to come off
   just to test someone else's code.
 - It keeps this repository clear of their unlicensed code, even as a test.
+  (Both repositories have had an MIT licence since 2026-11-15. None of their
+  code is used here.)
 
 If my firmware gets no frames, theirs is still there to help find out why.
 
