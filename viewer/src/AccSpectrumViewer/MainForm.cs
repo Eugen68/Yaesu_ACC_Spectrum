@@ -10,8 +10,9 @@ using YaesuAccScope;
 namespace AccSpectrumViewer;
 
 /// <summary>
-/// The main window: Main and Sub scopes, the wiring check, and buttons.
-/// Space pauses, D switches to 3DSS.
+/// The main window: Main and Sub scopes, each with its audio scope beside it,
+/// the wiring check, and buttons. Space pauses, D switches to 3DSS, A shows or
+/// hides the audio scopes.
 /// </summary>
 internal sealed class MainForm : Form
 {
@@ -21,10 +22,14 @@ internal sealed class MainForm : Form
     private readonly ConcurrentQueue<AccFrame> _frames = new();
     private readonly ScopeView _main = new("Main") { Dock = DockStyle.Fill };
     private readonly ScopeView _sub = new("Sub") { Dock = DockStyle.Fill };
+    private readonly AudioView _mainAudio = new("Main") { Dock = DockStyle.Fill };
+    private readonly AudioView _subAudio = new("Sub") { Dock = DockStyle.Fill };
+    private readonly TableLayoutPanel _scopes = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Color.Black };
     private readonly WiringView _wiring = new() { Dock = DockStyle.Bottom };
     private readonly Label _state = new() { AutoSize = false, Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.Gainsboro };
     private readonly CheckBox _pause = MakeToggle("&Pause");
     private readonly CheckBox _dss = MakeToggle("&3DSS");
+    private readonly CheckBox _audio = MakeToggle("&Audio");
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 };
     private readonly Stopwatch _rateClock = Stopwatch.StartNew();
     private readonly ToolTip _tips = new();
@@ -51,8 +56,15 @@ internal sealed class MainForm : Form
         tips.SetToolTip(_dss, "Show the last 40 traces in perspective, like the radio's 3DSS (D)");
         const string followsRadio = "This shows what the radio's own scope is set to. To change the span, Center or Fixed, " +
             "or the frequency, change them on the radio and the viewer follows.";
+        tips.SetToolTip(_audio, "Show each receiver's AF-FFT and oscilloscope beside its scope (A)");
         tips.SetToolTip(_main, followsRadio);
         tips.SetToolTip(_sub, followsRadio);
+        const string audioOnRadio = "The receiver's AF-FFT (0 to 4 kHz) and oscilloscope, from the ACC socket. " +
+            "The attenuators and the time are one setting for both receivers: change them on the radio.";
+        tips.SetToolTip(_mainAudio, audioOnRadio);
+        tips.SetToolTip(_subAudio, audioOnRadio);
+        _audio.Checked = true;
+        _audio.CheckedChanged += (_, _) => ShowAudio(_audio.Checked);
         _dss.CheckedChanged += (_, _) =>
         {
             _main.Show3dss = _sub.Show3dss = _dss.Checked;
@@ -67,7 +79,7 @@ internal sealed class MainForm : Form
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
         };
-        buttons.Controls.AddRange(new Control[] { _pause, _dss, project });
+        buttons.Controls.AddRange(new Control[] { _pause, _dss, _audio, project });
         buttons.Dock = DockStyle.None;
         buttons.Anchor = AnchorStyles.Left;
         var top = new TableLayoutPanel
@@ -86,12 +98,16 @@ internal sealed class MainForm : Form
         top.Controls.Add(buttons, 0, 0);
         top.Controls.Add(_state, 1, 0);
 
-        var scopes = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = Color.Black };
+        var scopes = _scopes;
+        scopes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 - AudioPercent));
+        scopes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, AudioPercent));
         scopes.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         scopes.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        _main.Margin = _sub.Margin = new Padding(4, 2, 4, 2);
+        _main.Margin = _sub.Margin = _mainAudio.Margin = _subAudio.Margin = new Padding(4, 2, 4, 2);
         scopes.Controls.Add(_main, 0, 0);
         scopes.Controls.Add(_sub, 0, 1);
+        scopes.Controls.Add(_mainAudio, 1, 0);
+        scopes.Controls.Add(_subAudio, 1, 1);
 
         Controls.Add(scopes);
         Controls.Add(_wiring);
@@ -109,6 +125,18 @@ internal sealed class MainForm : Form
             UpdateWiring();
         });
         _timer.Tick += (_, _) => Tick();
+    }
+
+    /// <summary>The share of the width the audio scopes take when shown.</summary>
+    internal const float AudioPercent = 26;
+
+    private void ShowAudio(bool show)
+    {
+        _scopes.SuspendLayout();
+        _scopes.ColumnStyles[0].Width = show ? 100 - AudioPercent : 100;
+        _scopes.ColumnStyles[1].Width = show ? AudioPercent : 0;
+        _mainAudio.Visible = _subAudio.Visible = show;
+        _scopes.ResumeLayout();
     }
 
     private static string Version =>
@@ -138,6 +166,9 @@ internal sealed class MainForm : Form
             case Keys.D:
                 _dss.Checked = !_dss.Checked;
                 return true;
+            case Keys.A:
+                _audio.Checked = !_audio.Checked;
+                return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
     }
@@ -152,12 +183,19 @@ internal sealed class MainForm : Form
             if (_pause.Checked) continue;
             _main.AddTrace(frame.Main);
             _sub.AddTrace(frame.Sub);
+            _mainAudio.AddAudio(frame.MainAudio);
+            _subAudio.AddAudio(frame.SubAudio);
             changed = true;
         }
         if (changed)
         {
             _main.Invalidate();
             _sub.Invalidate();
+            if (_audio.Checked)
+            {
+                _mainAudio.Invalidate();
+                _subAudio.Invalidate();
+            }
         }
 
         if (_rateClock.Elapsed >= TimeSpan.FromSeconds(1))

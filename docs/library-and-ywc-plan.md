@@ -144,8 +144,9 @@ power off the radio first.
 ## Later
 
 - 3DSS in the browser panel. I already have a prototype in tools/live_view.py.
-- An audio scope panel: the AF-FFT and the oscilloscope.
-- Test Sub's audio scope (bytes 2300–2899).
+- ~~An audio scope panel: the AF-FFT and the oscilloscope.~~ In the viewer and
+  YWC, from library 0.3.0.
+- ~~Test Sub's audio scope (bytes 2300–2899).~~ Done 2026-11-16.
 - The comparison with the RSP1 and RSP1B: step 7 of [plan.md](plan.md).
 - The C DLL.
 

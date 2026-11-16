@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only (see COPYING.LESSER and COPYING)
 
 using System;
+using System.Collections.Generic;
 
 namespace YaesuAccScope
 {
@@ -43,8 +44,8 @@ namespace YaesuAccScope
             Raw = raw;
             Main = new ReceiverScope(raw, 0, vfoAt: 3068, leftAt: 3076, spanAt: 3062, modeAt: 2917, passbandAt: 3036);
             Sub = new ReceiverScope(raw, Points, vfoAt: 3094, leftAt: 3098, spanAt: 3084, modeAt: 2918, passbandAt: 3040);
-            MainAudio = new AudioScope(raw, fftAt: 1701, fftPoints: 199, oscAt: 1900, settingsAt: 3056);
-            SubAudio = new AudioScope(raw, fftAt: 2300, fftPoints: 200, oscAt: 2500, settingsAt: -1);
+            MainAudio = new AudioScope(raw, fftAt: 1700, oscAt: 1900);
+            SubAudio = new AudioScope(raw, fftAt: 2300, oscAt: 2500);
         }
 
         /// <summary>The frame's bytes, as they came from the radio.</summary>
@@ -59,10 +60,7 @@ namespace YaesuAccScope
         /// <summary>Main's audio scope: the AF-FFT and the oscilloscope.</summary>
         public AudioScope MainAudio { get; }
 
-        /// <summary>
-        /// Sub's audio scope. Not tested on its own yet: the layout is taken from
-        /// where the bytes change, not from a tone in Sub's passband.
-        /// </summary>
+        /// <summary>Sub's audio scope: the AF-FFT and the oscilloscope.</summary>
         public AudioScope SubAudio { get; }
 
         /// <summary>
@@ -230,35 +228,55 @@ namespace YaesuAccScope
 
     /// <summary>
     /// One receiver's audio scope: the AF-FFT and the oscilloscope the radio can
-    /// show.
+    /// show. Each receiver has 600 bytes: 200 for the AF-FFT, then 400 for the
+    /// oscilloscope (Main from byte 1700, Sub from byte 2300). Both come before
+    /// the AF gain, so the AF gain knob doesn't change them. The time and the two
+    /// attenuators are one setting on the radio, shared by both receivers.
     /// </summary>
     public sealed class AudioScope
     {
         /// <summary>Columns in the oscilloscope, each a max byte and a min byte.</summary>
         public const int OscColumns = 200;
 
+        /// <summary>Points in the AF-FFT.</summary>
+        public const int FftPointCount = 200;
+
+        /// <summary>Hz between AF-FFT points: point 0 is 0 Hz and point 199 is 3,980 Hz.</summary>
+        public const double HzPerPoint = 20.0;
+
+        /// <summary>The byte holding the shared audio scope settings.</summary>
+        internal const int SettingsAt = 3056;
+
+        /// <summary>The oscilloscope time settings t0 to t5, as the radio's CAT manual names them.</summary>
+        public static IReadOnlyList<string> OscTimeNames { get; } = new[] { "1 ms", "3 ms", "10 ms", "30 ms", "100 ms", "300 ms" };
+
         private readonly byte[] _raw;
         private readonly int _fftAt;
         private readonly int _oscAt;
-        private readonly int _settingsAt;
         private byte[]? _fft;
 
-        internal AudioScope(byte[] raw, int fftAt, int fftPoints, int oscAt, int settingsAt)
+        internal AudioScope(byte[] raw, int fftAt, int oscAt)
         {
             _raw = raw;
             _fftAt = fftAt;
-            FftPoints = fftPoints;
             _oscAt = oscAt;
-            _settingsAt = settingsAt;
         }
 
-        /// <summary>Points in the AF-FFT: 199 for Main, 200 for Sub.</summary>
-        public int FftPoints { get; }
+        /// <summary>Points in the AF-FFT, 200 for both receivers.</summary>
+        public int FftPoints => FftPointCount;
+
+        /// <summary>The audio frequency of AF-FFT point <paramref name="point"/>.</summary>
+        public static double HzAt(int point) => point * HzPerPoint;
+
+        /// <summary>The nearest AF-FFT point to an audio frequency, kept within 0 to 199.</summary>
+        public static int PointAt(double hz) =>
+            Math.Max(0, Math.Min(FftPointCount - 1, (int)Math.Round(hz / HzPerPoint)));
 
         /// <summary>
-        /// The AF-FFT, from 0 to about 3.8 kHz, about 19-20 Hz a point, turned the
-        /// right way up so higher is stronger. Measured on Main: a 1 kHz tone on
-        /// point 49 and 2 kHz on point 101.
+        /// The AF-FFT, 200 points from 0 Hz to 3,980 Hz, 20 Hz a point, turned the
+        /// right way up so higher is stronger. Point 0 is the DC point and always
+        /// reads full scale, so a display should skip it. Measured on both
+        /// receivers: a 1 kHz tone on point 50 and 2 kHz on point 100.
         /// </summary>
         public byte[] Fft
         {
@@ -281,16 +299,22 @@ namespace YaesuAccScope
         public byte OscMin(int column) => _raw[_oscAt + 2 * CheckColumn(column) + 1];
 
         /// <summary>
-        /// The oscilloscope sweep time setting, t0 to t5 as 0 to 5. At t0 a column
-        /// is 50 us, 10 ms across. Known for Main only; null for Sub.
+        /// The oscilloscope time setting, t0 to t5 as 0 to 5 (see
+        /// <see cref="OscTimeNames"/>). Measured at t0: about 20 us a column, so
+        /// about 4 ms across. Each column holds the highest and lowest sample in
+        /// its time, so slower settings show the envelope rather than cycles.
+        /// Shared by both receivers.
         /// </summary>
-        public int? OscTime => _settingsAt < 0 ? (int?)null : _raw[_settingsAt] & 0x07;
+        public int OscTime => _raw[SettingsAt] & 0x07;
 
-        /// <summary>The oscilloscope attenuator, a0 to a2 as 0 to 2. Main only.</summary>
-        public int? OscAttenuator => _settingsAt < 0 ? (int?)null : (_raw[_settingsAt] >> 3) & 0x03;
+        /// <summary>
+        /// The oscilloscope attenuator, 0 to 2. At 0 a strong signal clips at
+        /// about 2 and 250. Shared by both receivers.
+        /// </summary>
+        public int OscAttenuator => (_raw[SettingsAt] >> 3) & 0x03;
 
-        /// <summary>The AF-FFT attenuator, 0 to 2. Main only.</summary>
-        public int? FftAttenuator => _settingsAt < 0 ? (int?)null : (_raw[_settingsAt] >> 5) & 0x03;
+        /// <summary>The AF-FFT attenuator, 0 to 2. Shared by both receivers.</summary>
+        public int FftAttenuator => (_raw[SettingsAt] >> 5) & 0x03;
 
         private static int CheckColumn(int column)
         {

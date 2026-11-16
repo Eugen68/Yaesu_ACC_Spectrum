@@ -25,7 +25,7 @@ already sends its scope over USB.
   the Main and Sub spectrum, both VFOs, the span, the placement and the audio
   scope. The frame layout is in [docs/protocol.md](docs/protocol.md).
 - **[ACC Spectrum Viewer](viewer/README.md)**, a Windows program that finds the
-  board, shows Main and Sub, and checks every wire. **ACC Firmware Flasher**
+  board, shows Main and Sub with their audio scopes, and checks every wire. **ACC Firmware Flasher**
   comes with it, so the firmware goes on without PlatformIO. Both are in the
   zip on the [releases page](https://github.com/mm5agm/Yaesu_ACC_Spectrum/releases).
 - **The [YaesuAccScope library](library/README.md)** on nuget.org, so any .NET

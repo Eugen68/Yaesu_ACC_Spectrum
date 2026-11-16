@@ -13,7 +13,7 @@ itself, closed-source included. If you change the library, you share those chang
 under the LGPL. See [COPYING.LESSER](COPYING.LESSER) and [COPYING](COPYING). The
 firmware and tools in the rest of this repo stay GPL-3.0.
 
-Version 0.2.0, on nuget.org as [YaesuAccScope](https://www.nuget.org/packages/YaesuAccScope):
+Version 0.3.0, on nuget.org as [YaesuAccScope](https://www.nuget.org/packages/YaesuAccScope):
 
     dotnet add package YaesuAccScope
 
@@ -94,7 +94,7 @@ you need to, and don't block: the frames come every 40 ms.
 | `AccFrame` | One frame decoded: `Main` and `Sub` (`ReceiverScope`), `MainAudio` and `SubAudio` (`AudioScope`), the Band button, and the raw bytes |
 | `ReceiverScope` | The 850 levels the right way up, the VFO, the span, Center/Cursor/Fix, the centre and edges in Hz, the frequency of each point, 3DSS, and the passband marker |
 | `ScopeRefiner` | Turns one receiver's raw rows into a refined trace for eyes: each point averaged over the last few rows, moved with the VFO in Center, and started again on a new span |
-| `AudioScope` | The AF-FFT and the oscilloscope, and for Main the oscilloscope time and both attenuators |
+| `AudioScope` | The AF-FFT (200 points, 20 Hz a point, 0 to 3,980 Hz) and the oscilloscope (200 columns of max and min), and the oscilloscope time and both attenuators, which the radio shares between Main and Sub |
 | `AccStatus` | The board's status text: firmware version, SPI mode, counts, and edges a second on each input for checking the wiring |
 
 ## How sure each part is
@@ -105,13 +105,11 @@ Tested on my own captures from my FTdx101MP, in `captures/`:
   that the board's own status counted too.
 - Main and Sub: the VFO, the span at every span from 1k to 1M, and Center,
   Cursor and Fix.
-- Main's AF-FFT, with a 1 kHz and a 2 kHz tone, and Main's audio settings.
+- The AF-FFT on Main (1 kHz and 2 kHz tones) and Sub (1 kHz), and the audio
+  settings, set from either receiver.
 
 Not tested yet:
 
-- **Sub's audio scope.** I've placed it from where the bytes change (AF-FFT in
-  bytes 2300-2499, oscilloscope in 2500-2899), not from a tone in Sub's
-  passband.
 - **The exact dB scale of the levels.** Measured at about 0.42 dB a step (±10%)
   on 2026-11-14, with no absolute zero: they're the radio's display data after
   its scope LEVEL. See [docs/comparison.md](../docs/comparison.md).

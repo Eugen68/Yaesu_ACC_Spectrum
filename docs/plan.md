@@ -419,11 +419,17 @@ Rules for my own firmware:
 
    | Bytes | What |
    |---|---|
-   | 1700 | `01`, fixed |
-   | 1701-1899 | Main's AF-FFT: 199 points, 0 to about 3.8 kHz, 19-20 Hz a point (the 1 kHz tone at point 49, 2 kHz at 101). Inverted like the scope: lower is stronger |
-   | 1900-2299 | Main's oscilloscope: 200 columns, each a max byte then a min byte, centred on 128. At sweep time t0, 50 us a column, 10 ms across |
-   | 2300-2899 | Sub's, the same way round, probably: AF-FFT 2300-2499, oscilloscope 2500-2899. Bytes 2300-2301 aren't fixed: they move with the AF-FFT attenuator, so they belong to the AF-FFT. Not tested on its own yet |
-   | 3056 | Main's AF-FFT/oscilloscope settings: bits 0-2 osc time (t0-t5), bits 3-4 osc attenuator (a0-a2), bits 5-6 FFT attenuator (0-2) |
+   | 1700-1899 | Main's AF-FFT: 200 points, 0 to 3,980 Hz, 20 Hz a point (the 1 kHz tone at point 50, 2 kHz at 100). Point 0, byte 1700, is DC and always `01`. Inverted like the scope: lower is stronger |
+   | 1900-2299 | Main's oscilloscope: 200 columns, each a max byte then a min byte, centred on 128. At t0 about 20 us a column, 4 ms across |
+   | 2300-2899 | Sub's, the same way round: AF-FFT 2300-2499, oscilloscope 2500-2899 |
+   | 3056 | The AF-FFT/oscilloscope settings, shared by Main and Sub: bits 0-2 osc time (t0-t5), bits 3-4 osc attenuator (0-2), bits 5-6 FFT attenuator (0-2) |
+
+   At first I counted Main's AF-FFT from byte 1701, with 1700 as a fixed
+   marker. On 2026-11-16, with Sub's layout confirmed by a 1 kHz tone in Sub's
+   passband, the two blocks only line up at 600 bytes each if 1700 is Main's
+   point 0, and then both are exactly 20 Hz a point. The radio has one audio
+   scope setting for both receivers: SS17 changes SS07 too. See
+   [protocol.md](protocol.md).
 
    The oscilloscope attenuator changed the max-to-min gap from 238 to 104 to
    33 (a0, a1, a2), and the FFT attenuator raised the AF-FFT bytes from 53 to
