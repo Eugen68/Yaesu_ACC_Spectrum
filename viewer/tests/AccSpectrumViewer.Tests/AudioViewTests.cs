@@ -68,6 +68,42 @@ public class AudioViewTests
     }
 
     [Fact]
+    public void A_waterfall_row_is_the_average_of_its_frames()
+    {
+        var row = AudioView.AverageRow(new[] { 0, 400, 1020, 6 }, 4);
+
+        Assert.Equal(new byte[] { 0, 100, 255, 2 }, row);
+    }
+
+    [Fact]
+    public void The_waterfall_holds_a_whole_ft8_cycle_in_100_pixels()
+    {
+        // 25 frames a second; an FT8 cycle is 15 seconds.
+        double secondsIn100Rows = 100.0 * AudioView.FramesPerRow / 25;
+
+        Assert.True(secondsIn100Rows >= 15, $"{secondsIn100Rows} s");
+        Assert.Equal(199, AudioView.FallPoints);
+    }
+
+    [Fact]
+    public void The_waterfall_gets_more_height_than_the_oscilloscope()
+    {
+        Assert.True(AudioView.FftPercent(oscilloscope: false) < AudioView.FftPercent(oscilloscope: true));
+    }
+
+    [Fact]
+    public void The_waterfall_is_shown_unless_the_oscilloscope_is_asked_for()
+    {
+        using var form = new MainForm();
+        var views = AllControls(form).OfType<AudioView>().ToArray();
+        var osc = AllControls(form).OfType<CheckBox>().Single(c => c.Text == "&Oscilloscope");
+
+        Assert.All(views, v => Assert.False(v.ShowOscilloscope));
+        osc.Checked = true;
+        Assert.All(views, v => Assert.True(v.ShowOscilloscope));
+    }
+
+    [Fact]
     public void Each_receiver_has_an_audio_view()
     {
         using var form = new MainForm();

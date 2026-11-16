@@ -30,6 +30,7 @@ internal sealed class MainForm : Form
     private readonly CheckBox _pause = MakeToggle("&Pause");
     private readonly CheckBox _dss = MakeToggle("&3DSS");
     private readonly CheckBox _audio = MakeToggle("&Audio");
+    private readonly CheckBox _osc = MakeToggle("&Oscilloscope");
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 40 };
     private readonly Stopwatch _rateClock = Stopwatch.StartNew();
     private readonly ToolTip _tips = new();
@@ -56,15 +57,22 @@ internal sealed class MainForm : Form
         tips.SetToolTip(_dss, "Show the last 40 traces in perspective, like the radio's 3DSS (D)");
         const string followsRadio = "This shows what the radio's own scope is set to. To change the span, Center or Fixed, " +
             "or the frequency, change them on the radio and the viewer follows.";
-        tips.SetToolTip(_audio, "Show each receiver's AF-FFT and oscilloscope beside its scope (A)");
+        tips.SetToolTip(_audio, "Show each receiver's audio scope beside its scope (A)");
+        tips.SetToolTip(_osc, "Under each AF-FFT, show the radio's oscilloscope instead of the audio waterfall (O)");
         tips.SetToolTip(_main, followsRadio);
         tips.SetToolTip(_sub, followsRadio);
-        const string audioOnRadio = "The receiver's AF-FFT (0 to 4 kHz) and oscilloscope, from the ACC socket. " +
+        const string audioOnRadio = "The receiver's AF-FFT (0 to 4 kHz) from the ACC socket, above its waterfall or the radio's oscilloscope. " +
             "The attenuators and the time are one setting for both receivers: change them on the radio.";
         tips.SetToolTip(_mainAudio, audioOnRadio);
         tips.SetToolTip(_subAudio, audioOnRadio);
         _audio.Checked = true;
         _audio.CheckedChanged += (_, _) => ShowAudio(_audio.Checked);
+        _osc.CheckedChanged += (_, _) =>
+        {
+            _mainAudio.ShowOscilloscope = _subAudio.ShowOscilloscope = _osc.Checked;
+            _mainAudio.Invalidate();
+            _subAudio.Invalidate();
+        };
         _dss.CheckedChanged += (_, _) =>
         {
             _main.Show3dss = _sub.Show3dss = _dss.Checked;
@@ -79,7 +87,7 @@ internal sealed class MainForm : Form
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
         };
-        buttons.Controls.AddRange(new Control[] { _pause, _dss, _audio, project });
+        buttons.Controls.AddRange(new Control[] { _pause, _dss, _audio, _osc, project });
         buttons.Dock = DockStyle.None;
         buttons.Anchor = AnchorStyles.Left;
         var top = new TableLayoutPanel
@@ -136,6 +144,7 @@ internal sealed class MainForm : Form
         _scopes.ColumnStyles[0].Width = show ? 100 - AudioPercent : 100;
         _scopes.ColumnStyles[1].Width = show ? AudioPercent : 0;
         _mainAudio.Visible = _subAudio.Visible = show;
+        _osc.Enabled = show;
         _scopes.ResumeLayout();
     }
 
@@ -168,6 +177,9 @@ internal sealed class MainForm : Form
                 return true;
             case Keys.A:
                 _audio.Checked = !_audio.Checked;
+                return true;
+            case Keys.O:
+                _osc.Checked = !_osc.Checked;
                 return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);

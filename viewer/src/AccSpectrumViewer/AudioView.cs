@@ -3,14 +3,16 @@
 // SPDX-License-Identifier: GPL-3.0-only (see LICENSE in the top folder)
 
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using YaesuAccScope;
 
 namespace AccSpectrumViewer;
 
 /// <summary>
-/// One receiver's audio scope: the AF-FFT from 0 to 4 kHz above the
-/// oscilloscope, as the radio sends them. The radio has one time and
-/// attenuator setting for both receivers; they're set on the radio.
+/// One receiver's audio scope: the AF-FFT from 0 to 4 kHz above an audio
+/// waterfall made from it, or above the radio's oscilloscope. The radio has one
+/// time and attenuator setting for both receivers; they're set on the radio.
 /// </summary>
 internal sealed class AudioView : Control
 {
@@ -23,6 +25,27 @@ internal sealed class AudioView : Control
     /// <summary>How much of each new AF-FFT goes into the trace, to steady it a little.</summary>
     internal const double FftFollow = 0.5;
 
+    /// <summary>The AF-FFT points across the waterfall: all but DC.</summary>
+    internal const int FallPoints = FftPoints - FirstPoint;
+
+    /// <summary>
+    /// Frames averaged into each waterfall row. At 25 frames a second that's
+    /// about 6 rows a second, so 100 pixels of waterfall hold 16 seconds: a
+    /// whole FT8 cycle. Averaging also steadies the noise, so weak tones show.
+    /// </summary>
+    internal const int FramesPerRow = 4;
+
+    /// <summary>How fast the waterfall's colours follow the levels, a share a row: 95% in about 3 seconds.</summary>
+    internal const double FallFollow = 0.15;
+
+    private const int FallRows = 400;
+
+    private readonly int[] _fall = new int[FallPoints * FallRows];
+    private readonly Bitmap _fallBitmap = new(FallPoints, FallRows, PixelFormat.Format32bppRgb);
+    private readonly int[] _rowSum = new int[FallPoints];
+    private int _rowFrames;
+    private bool _fallChanged;
+    private ColourStretch? _stretch;
     private readonly double[] _fft = new double[FftPoints];
     private readonly byte[] _oscMax = new byte[Columns];
     private readonly byte[] _oscMin = new byte[Columns];
@@ -53,11 +76,16 @@ internal sealed class AudioView : Control
     /// <summary>"Main" or "Sub".</summary>
     public string ReceiverName { get; }
 
+    /// <summary>True to draw the radio's oscilloscope under the AF-FFT instead of the audio waterfall.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool ShowOscilloscope { get; set; }
+
     /// <summary>Adds a frame's audio scope. Call <see cref="Control.Invalidate()"/> after.</summary>
     public void AddAudio(AudioScope audio)
     {
         var fft = audio.Fft;
         Smooth(_fft, fft, _hasData ? FftFollow : 1.0);
+        AddToRow(fft);
         for (int c = 0; c < Columns; c++)
         {
             _oscMax[c] = audio.OscMax(c);
@@ -71,6 +99,39 @@ internal sealed class AudioView : Control
         _fftAtt = audio.FftAttenuator;
         _hasData = true;
     }
+
+    // Adds a frame's AF-FFT to the waterfall row being built, and when the row
+    // has its frames, colours it and puts it at the top.
+    private void AddToRow(byte[] fft)
+    {
+        for (int i = 0; i < FallPoints; i++) _rowSum[i] += fft[i + FirstPoint];
+        if (++_rowFrames < FramesPerRow) return;
+
+        var row = AverageRow(_rowSum, _rowFrames);
+        Array.Clear(_rowSum);
+        _rowFrames = 0;
+        var target = ColourStretch.From(row);
+        _stretch = _stretch == null ? target : _stretch.Towards(target, FallFollow);
+        Array.Copy(_fall, 0, _fall, FallPoints, FallPoints * (FallRows - 1));
+        var lookup = _stretch.Lookup;
+        for (int i = 0; i < FallPoints; i++) _fall[i] = Palette.Waterfall[lookup[row[i]]];
+        _fallChanged = true;
+    }
+
+    /// <summary>The average of the frames summed into a row, rounded.</summary>
+    internal static byte[] AverageRow(int[] sum, int frames)
+    {
+        var row = new byte[sum.Length];
+        for (int i = 0; i < sum.Length; i++) row[i] = (byte)Math.Clamp((sum[i] + frames / 2) / frames, 0, 255);
+        return row;
+    }
+
+    /// <summary>
+    /// The share of the audio area the AF-FFT takes: more when the oscilloscope
+    /// is under it, less with the waterfall, which needs the height to hold a
+    /// whole FT8 cycle.
+    /// </summary>
+    internal static int FftPercent(bool oscilloscope) => oscilloscope ? 60 : 45;
 
     /// <summary>Moves each smoothed point a share of the way to the new AF-FFT.</summary>
     internal static void Smooth(double[] smoothed, byte[] latest, double follow)
@@ -109,11 +170,40 @@ internal sealed class AudioView : Control
                 new Rectangle(4, 4 + _titleFont.Height, Width - 8, _scaleFont.Height), Color.Gray, flags);
 
         var area = new Rectangle(0, titleHeight, Width, Math.Max(Height - titleHeight, 1));
-        int fftHeight = Math.Max(area.Height * 6 / 10, 30);
+        int fftHeight = Math.Max(area.Height * FftPercent(ShowOscilloscope) / 100, 30);
         var fft = new Rectangle(area.X, area.Y, area.Width, fftHeight);
-        var osc = new Rectangle(area.X, fft.Bottom + 4, area.Width, Math.Max(area.Bottom - fft.Bottom - 4, 1));
+        var below = new Rectangle(area.X, fft.Bottom + 4, area.Width, Math.Max(area.Bottom - fft.Bottom - 4, 1));
         DrawFft(g, fft);
-        DrawOscilloscope(g, osc);
+        if (ShowOscilloscope) DrawOscilloscope(g, below);
+        else DrawWaterfall(g, below);
+    }
+
+    // Newest row at the top, one row of pixels each, so its speed doesn't
+    // change with the window's height. Lined up with the AF-FFT above it.
+    private void DrawWaterfall(Graphics g, Rectangle r)
+    {
+        g.DrawRectangle(_edgePen, r.Left, r.Top, r.Width - 1, r.Height - 1);
+        if (!_hasData) return;
+        if (_fallChanged)
+        {
+            var data = _fallBitmap.LockBits(new Rectangle(0, 0, FallPoints, FallRows), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
+            try
+            {
+                for (int row = 0; row < FallRows; row++)
+                    Marshal.Copy(_fall, row * FallPoints, data.Scan0 + row * data.Stride, FallPoints);
+            }
+            finally
+            {
+                _fallBitmap.UnlockBits(data);
+            }
+            _fallChanged = false;
+        }
+        int rows = Math.Min(FallRows, r.Height);
+        int left = (int)Math.Round(FftX(r, FirstPoint));
+        g.InterpolationMode = InterpolationMode.NearestNeighbor;
+        g.PixelOffsetMode = PixelOffsetMode.Half;
+        g.DrawImage(_fallBitmap, new Rectangle(left, r.Y, r.Right - left, rows), new Rectangle(0, 0, FallPoints, rows), GraphicsUnit.Pixel);
+        g.PixelOffsetMode = PixelOffsetMode.Default;
     }
 
     // x of an AF-FFT point, with 0 Hz at the left edge and 4 kHz at the right.
@@ -182,6 +272,7 @@ internal sealed class AudioView : Control
     {
         if (disposing)
         {
+            _fallBitmap.Dispose();
             _fftPen.Dispose();
             _fftFill.Dispose();
             _oscBrush.Dispose();

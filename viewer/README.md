@@ -32,11 +32,16 @@ everything it knows about the board and the frames comes from there.
     one, so nothing goes off the top, and comes back down slowly.
   - Press **D** or **3DSS** for the last 40 traces in perspective, like the radio's 3DSS.
   - Press **Space** or **Pause** to freeze it.
-- **Shows the audio scopes.** Beside each receiver's scope is its audio scope,
-  the same pictures the radio's AF-FFT and oscilloscope draw: the audio
-  spectrum from 0 to 4 kHz, with a line each kHz, above the waveform. You see
-  the receive filter's shape, and tones and voices inside it. They come from
-  the ACC socket too, before the AF gain, so they don't change with the volume.
+- **Shows the audio scopes.** Beside each receiver's scope is its audio scope:
+  the radio's AF-FFT, the audio spectrum from 0 to 4 kHz with a line each kHz,
+  and under it an audio waterfall made from the AF-FFT. You see the receive
+  filter's shape, and tones and voices inside it. They come from the ACC
+  socket too, before the AF gain, so they don't change with the volume.
+  - The audio waterfall shows about 16 seconds in 100 pixels, so a whole FT8
+    cycle fits: each station is a stripe, and the gaps between cycles are dark
+    lines across it. Its colours look after themselves, like the scope's.
+  - Press **O** or **Oscilloscope** for the radio's oscilloscope (the waveform)
+    in place of the audio waterfall.
   - The FFT attenuator, the oscilloscope attenuator and the time are shown under
     each title. The radio has one setting for both receivers, so change it on
     the radio (the AF-FFT/oscilloscope settings in the scope's MULTI menu, or
@@ -46,7 +51,7 @@ everything it knows about the board and the frames comes from there.
     AF-FFT shows less. SLOW was best for FT8. See section 5 of
     [Getting the best picture](../docs/best-picture.md#5-for-the-audio-scope-turn-the-agc-on-and-open-the-filter).
 
-  ![The viewer with the audio scopes: Main on 808 kHz USB with Radio Scotland's 810 kHz carrier as a 2 kHz tone in a wide filter, and Sub on 809 kHz USB with the carrier as a 1 kHz tone. Each audio panel shows the AF-FFT from 0 to 4 kHz above the oscilloscope.](../docs/images/viewer-audio.png)
+  ![The viewer with the audio scopes: Main on 14,074 kHz and Sub on 18,100 kHz, both FT8 in DATA-U. Each audio panel shows the AF-FFT from 0 to 4 kHz above the audio waterfall, where the FT8 stations are vertical stripes and the gaps between cycles are dark lines across.](../docs/images/viewer-audio.png)
 
 - **Checks the wiring.** The board sends a status line every 5 seconds, with how
   many times a second each input changes. The bar along the bottom compares
