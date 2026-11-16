@@ -17,7 +17,7 @@ have done it on the FTDX10), so the same board and code should suit them too.
 If you have one, I'd like to hear how it goes. The FT-710 doesn't need it: it
 already sends its scope over USB.
 
-![ACC Spectrum Viewer: Main on 14,074 kHz and Sub on 7,074 kHz, each a trace above a waterfall, with the wiring check along the bottom, all green.](docs/images/viewer.png)
+![ACC Spectrum Viewer: Main on 14,074 kHz and Sub on 18,100 kHz, each a trace above a waterfall with the FT8 signals, and beside each its audio scope: the AF-FFT from 0 to 4 kHz above an audio waterfall. The wiring check along the bottom is all green.](docs/images/viewer.png)
 
 ## What's here
 

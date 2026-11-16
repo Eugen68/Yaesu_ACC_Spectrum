@@ -11,7 +11,7 @@ To build the board and wire it to the radio, follow the
 It's also the first real user of the [YaesuAccScope library](../library/README.md):
 everything it knows about the board and the frames comes from there.
 
-![The viewer: Main on 14,074 kHz and Sub on 7,074 kHz, each a trace above a waterfall, with the wiring check along the bottom, all green.](../docs/images/viewer.png)
+![The viewer: Main on 14,074 kHz and Sub on 18,100 kHz, each a trace above a waterfall with the FT8 signals, and beside each its audio scope: the AF-FFT from 0 to 4 kHz above an audio waterfall. The wiring check along the bottom is all green.](../docs/images/viewer.png)
 
 ## What it does
 
