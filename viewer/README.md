@@ -32,6 +32,19 @@ everything it knows about the board and the frames comes from there.
     one, so nothing goes off the top, and comes back down slowly.
   - Press **D** or **3DSS** for the last 40 traces in perspective, like the radio's 3DSS.
   - Press **Space** or **Pause** to freeze it.
+- **Shows the audio scopes.** Beside each receiver's scope is its audio scope,
+  the same pictures the radio's AF-FFT and oscilloscope draw: the audio
+  spectrum from 0 to 4 kHz, with a line each kHz, above the waveform. You see
+  the receive filter's shape, and tones and voices inside it. They come from
+  the ACC socket too, before the AF gain, so they don't change with the volume.
+  - The FFT attenuator, the oscilloscope attenuator and the time are shown under
+    each title. The radio has one setting for both receivers, so change it on
+    the radio (the AF-FFT/oscilloscope settings in the scope's MULTI menu, or
+    from YWC).
+  - Press **A** or **Audio** to hide them and give the scopes the full width.
+
+  ![The viewer with the audio scopes: Main on 808 kHz USB with Radio Scotland's 810 kHz carrier as a 2 kHz tone in a wide filter, and Sub on 809 kHz USB with the carrier as a 1 kHz tone. Each audio panel shows the AF-FFT from 0 to 4 kHz above the oscilloscope.](../docs/images/viewer-audio.png)
+
 - **Checks the wiring.** The board sends a status line every 5 seconds, with how
   many times a second each input changes. The bar along the bottom compares
   them with what a working board shows, and says what to check when one is

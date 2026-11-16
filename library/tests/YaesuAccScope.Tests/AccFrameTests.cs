@@ -108,18 +108,49 @@ public class AccFrameTests
     }
 
     [Theory]
-    [InlineData("audio-main-tone1000", 49)]
-    [InlineData("audio-main-tone2000", 101)]
-    public void Main_af_fft_shows_the_tone(string capture, int point)
+    [InlineData("audio-main-tone1000", false, 1000)]
+    [InlineData("audio-main-tone2000", false, 2000)]
+    [InlineData("audio-sub-tone1000", true, 1000)]
+    public void Af_fft_shows_the_tone(string capture, bool sub, int toneHz)
     {
         var frames = Captures.Step5(capture);
-        var sum = new int[frames[0].MainAudio.FftPoints];
+        var sum = new int[AudioScope.FftPointCount];
         foreach (var f in frames)
-            for (int i = 0; i < sum.Length; i++) sum[i] += f.MainAudio.Fft[i];
+        {
+            var audio = sub ? f.SubAudio : f.MainAudio;
+            Assert.Equal(AudioScope.FftPointCount, audio.Fft.Length);
+            for (int i = 0; i < sum.Length; i++) sum[i] += audio.Fft[i];
+        }
 
         // Skip the first few points, which sit near DC.
         int peak = Enumerable.Range(10, sum.Length - 10).MaxBy(i => sum[i]);
-        Assert.InRange(peak, point - 2, point + 2);
+        Assert.InRange(peak, AudioScope.PointAt(toneHz) - 2, AudioScope.PointAt(toneHz) + 2);
+    }
+
+    [Fact]
+    public void Af_fft_point_zero_is_dc()
+    {
+        // Byte 1700 always reads 01, full scale once turned up the right way.
+        // Sub's point 0, byte 2300, isn't pinned like this.
+        foreach (var f in Captures.Step5("audio-main-tone1000"))
+            Assert.Equal(0xFE, f.MainAudio.Fft[0]);
+    }
+
+    [Theory]
+    [InlineData(0, 0.0)]
+    [InlineData(50, 1000.0)]
+    [InlineData(199, 3980.0)]
+    public void Af_fft_points_are_20_hz(int point, double hz)
+    {
+        Assert.Equal(hz, AudioScope.HzAt(point));
+        Assert.Equal(point, AudioScope.PointAt(hz));
+    }
+
+    [Fact]
+    public void Af_fft_point_at_is_kept_in_range()
+    {
+        Assert.Equal(0, AudioScope.PointAt(-100));
+        Assert.Equal(199, AudioScope.PointAt(10_000));
     }
 
     [Theory]
@@ -129,14 +160,26 @@ public class AccFrameTests
     [InlineData("audio-osc_att_a0", 0, 0, 4)]
     [InlineData("audio-osc_att_a1", 0, 1, 4)]
     [InlineData("audio-osc_att_back_a2", 0, 2, 4)]
-    public void Main_audio_settings(string capture, int fftAttenuator, int oscAttenuator, int oscTime)
+    // audio-sub-set-fft_att_1 was set with SS17, Sub's command: the radio has
+    // one setting for both, so Main reads it too.
+    [InlineData("audio-sub-set-fft_att_1", 1, 2, 4)]
+    public void Audio_settings_are_shared(string capture, int fftAttenuator, int oscAttenuator, int oscTime)
     {
-        var audio = Captures.Step5(capture)[0].MainAudio;
+        var frame = Captures.Step5(capture)[0];
+        foreach (var audio in new[] { frame.MainAudio, frame.SubAudio })
+        {
+            Assert.Equal(fftAttenuator, audio.FftAttenuator);
+            Assert.Equal(oscAttenuator, audio.OscAttenuator);
+            Assert.Equal(oscTime, audio.OscTime);
+        }
+    }
 
-        Assert.Equal(fftAttenuator, audio.FftAttenuator);
-        Assert.Equal(oscAttenuator, audio.OscAttenuator);
-        Assert.Equal(oscTime, audio.OscTime);
-        Assert.Null(Captures.Step5(capture)[0].SubAudio.OscTime);
+    [Fact]
+    public void Osc_time_names_match_the_cat_manual()
+    {
+        Assert.Equal(6, AudioScope.OscTimeNames.Count);
+        Assert.Equal("1 ms", AudioScope.OscTimeNames[0]);
+        Assert.Equal("300 ms", AudioScope.OscTimeNames[5]);
     }
 
     [Fact]

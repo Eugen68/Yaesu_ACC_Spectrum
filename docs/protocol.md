@@ -104,16 +104,31 @@ the radio draws them.
 
 ### The audio scope
 
-The AF-FFT and oscilloscope the radio can show for each receiver.
+The AF-FFT and oscilloscope the radio can show for each receiver. Each
+receiver has 600 bytes: 200 for the AF-FFT, then 400 for the oscilloscope.
 
 | Bytes | What |
 |---|---|
-| 1700 | Always `01` |
-| 1701-1899 | Main's AF-FFT: 199 points, 0 to about 3.8 kHz, 19-20 Hz a point. Inverted like the scope rows. A 1 kHz tone shows on point 49, 2 kHz on 101 |
-| 1900-2299 | Main's oscilloscope: 200 columns, each a max byte then a min byte, centred on 128. At sweep time t0 a column is 50 us, 10 ms across |
-| 2300-2499 | Sub's AF-FFT, 200 points. **Not tested on its own:** bytes 2300 and 2301 move with the AF-FFT attenuator like the rest, so I've taken them as part of it |
-| 2500-2899 | Sub's oscilloscope, the same as Main's. Not tested on its own |
-| 3056 | Main's settings. Bits 0-2: oscilloscope time, t0 to t5. Bits 3-4: oscilloscope attenuator, a0 to a2. Bits 5-6: AF-FFT attenuator, 0 to 2 |
+| 1700-1899 | Main's AF-FFT: 200 points, 0 to 3,980 Hz, 20 Hz a point. Inverted like the scope rows. Point 0 (byte 1700) is DC and always reads `01`. A 1 kHz tone shows on point 50, 2 kHz on 100 |
+| 1900-2299 | Main's oscilloscope: 200 columns, each a max byte then a min byte, centred on 128 |
+| 2300-2499 | Sub's AF-FFT, the same as Main's, except that point 0 isn't pinned to `01`. A 1 kHz tone shows on point 50, 1.5 kHz on 75 |
+| 2500-2899 | Sub's oscilloscope, the same as Main's. Its swing follows a tone in Sub's passband |
+| 3056 | The audio scope settings, shared by both receivers. Bits 0-2: oscilloscope time, t0 to t5. Bits 3-4: oscilloscope attenuator, 0 to 2. Bits 5-6: AF-FFT attenuator, 0 to 2 |
+
+Measured on 2026-11-16 with Radio Scotland's 810 kHz carrier, Main on 808 kHz
+USB (a 2 kHz tone) and Sub on 809 kHz USB (1 kHz):
+
+- **One setting for both receivers.** The radio keeps a single AF-FFT and
+  oscilloscope setting: setting it with SS17 changes SS07 too, and the other
+  way round. Byte 3056 follows both.
+- **Before the AF gain.** Turning the AF gain makes no difference to either
+  the AF-FFT or the oscilloscope. Sub's receive filter does: with a narrow
+  filter that leaves the tone out, the tone goes from the AF-FFT too.
+- **The time setting.** The CAT manual names t0 to t5 as 1, 3, 10, 30, 100 and
+  300 ms. At t0 a 2 kHz tone repeats every 25.5 columns, so a column is about
+  20 us and the 200 columns about 4 ms. Each column is the highest and lowest
+  sample in its time, so slower settings show the envelope, not cycles.
+- **Oscilloscope attenuator 0** clips a strong signal at about 2 and 250.
 
 ### Other bytes
 
