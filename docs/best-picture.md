@@ -1,6 +1,6 @@
 # Getting the best picture
 
-Four things decide how much the ACC scope shows you. The advice here comes
+Five things decide how much the ACC scope shows you. The advice here comes
 from measurements on my FTdx101MP on 2026-11-14. The figures and how they were
 taken are in [comparison.md](comparison.md).
 
@@ -76,3 +76,32 @@ Use the SDR when you need:
   under half a second at every span;
 - a span different from the radio's own scope. Changing the ACC span changes
   the radio's scope too, because it is the radio's scope.
+
+## 5. For the audio scope, turn the AGC on and open the filter
+
+The audio scope (the AF-FFT and oscilloscope beside each receiver) shows the
+receiver's audio, so the receive settings decide what it shows. I measured it
+on 2026-11-16 with FT8 on 20 m (Main) and 17 m (Sub), 30 seconds (two FT8
+cycles) at each AGC setting, RF gain fully up, IPO on and no attenuator.
+
+- **Don't leave the AGC off.** With it off, the FT8 tones stood 42 (Main) and
+  63 (Sub) steps above the AF-FFT's floor. With any AGC setting they stood 71
+  to 77 steps above it.
+- **With the AGC off the oscilloscope clips.** Nothing holds the audio down, so
+  on a busy band it fills the whole box: Sub's ran from 2 to 250, the ends of
+  its range, in 300 of 376 frames. With SLOW it used about 60 steps of the
+  255 and never filled the box.
+- **SLOW was best, but only just.** FAST, MID, SLOW and AUTO were all within a
+  few steps of each other. SLOW gave the most (74 on Main, 77 on Sub). AUTO
+  pumped least on Main, so it's a good choice too.
+- **The AGC also keeps the trace's height steady.** With it off, the
+  oscilloscope swells when stations transmit and shrinks to a thin line in the
+  gap at the end of each FT8 cycle. With the AGC on it still thins now and
+  then, but much less.
+- **Open the filter to see the whole passband.** The AF-FFT shows 0 to 4 kHz,
+  but only what the receive filter lets through. In DATA-U my Main filter was
+  600 Hz, and the AF-FFT showed a narrow hump with a few FT8 tones on it. At
+  4000 Hz it showed the whole FT8 slot, about 100 Hz to 3.6 kHz. In DATA and
+  CW modes, 4000 Hz is SH code 21; in SSB it is code 23.
+- **The AF gain makes no difference.** The audio scope is taken before the
+  volume control.
