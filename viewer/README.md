@@ -42,6 +42,9 @@ everything it knows about the board and the frames comes from there.
     the radio (the AF-FFT/oscilloscope settings in the scope's MULTI menu, or
     from YWC).
   - Press **A** or **Audio** to hide them and give the scopes the full width.
+  - Turn the radio's AGC on, or the oscilloscope fills its box and the
+    AF-FFT shows less. SLOW was best for FT8. See section 5 of
+    [Getting the best picture](../docs/best-picture.md#5-for-the-audio-scope-turn-the-agc-on-and-open-the-filter).
 
   ![The viewer with the audio scopes: Main on 808 kHz USB with Radio Scotland's 810 kHz carrier as a 2 kHz tone in a wide filter, and Sub on 809 kHz USB with the carrier as a 1 kHz tone. Each audio panel shows the AF-FFT from 0 to 4 kHz above the oscilloscope.](../docs/images/viewer-audio.png)
 
