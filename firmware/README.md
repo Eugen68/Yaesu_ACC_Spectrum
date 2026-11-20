@@ -43,6 +43,36 @@ What it does:
   115200. It always starts `ACC pipe: version 2.0.1,` so a program can tell
   it's talking to this firmware, and which version.
 
+## Wi-Fi (version 3)
+
+Version 3 keeps the USB pipe exactly as it was, so ACC Spectrum Viewer works as
+before, and adds the scope on a web page over Wi-Fi. Any browser on the home
+network can open it: a phone, a tablet or another PC.
+
+- **First start, or BOOT held while it powers up:** the board makes its own
+  network, `ACC-Scope-xxxx`, with no password. Join it from a phone and the
+  setup page opens (or go to http://192.168.4.1). Pick the home network, type
+  its password and save; the board restarts and joins it.
+- **After that:** open http://acc-scope.local, or the address the status text
+  gives, such as `wifi 192.168.1.20`. The page shows the scope and waterfall
+  with the frequency scale, and the audio scope, for Main and, on an FTdx101,
+  Sub. It tells the FTDX10 from the FTdx101 the same way the library does.
+- **If the saved network can't be joined for 30 seconds,** the setup network
+  comes up as well, so the network can be changed, and the board keeps trying.
+- **To forget the network,** send `w` on the USB, or hold BOOT at power-on.
+- The status text gives the Wi-Fi state before `edges/s`: `wifi 192.168.1.20`,
+  `wifi connecting` or `wifi setup ACC-Scope-xxxx`.
+
+How it works: `web.cpp` runs on its own task on core 0, so the SPI and USB work
+on core 1 never waits for it. Port 80 serves the page (`web/index.html`, built
+in by `embed_web.py`), `/status` and `/wifi`. Port 81 is a WebSocket that sends
+each frame's first 3102 bytes as one binary message, to up to three browsers. A
+browser that can't keep up is dropped and reconnects.
+
+Not yet checked on the radio: whether Wi-Fi traffic disturbs the SPI capture.
+`tools/check_frames.py` shows it: the data should still end on the same byte
+in every frame.
+
 Both sockets can be plugged into the PC at once: COM for flashing and status
 text, USB for the frames. That's how I run it, so nothing has to be moved
 between flashing and capturing.

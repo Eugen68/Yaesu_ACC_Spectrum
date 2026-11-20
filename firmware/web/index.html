@@ -24,9 +24,11 @@ header button[aria-pressed=true]{background:#555}
 .panel h2 span{color:var(--dim);font-weight:400}
 .scale{position:relative;height:16px;font-size:11px;color:var(--dim)}
 .scale div{position:absolute;transform:translateX(-50%);white-space:nowrap}
-canvas{display:block;width:100%;min-height:0}
-.trace{flex:3}
-.fall{flex:2}
+.scale div.first{transform:none}
+.scale div.last{transform:translateX(-100%)}
+canvas{display:block;width:100%;height:0;min-height:0}
+.trace{flex:3 1 0}
+.fall{flex:2 1 0}
 footer{padding:4px 10px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hidden{display:none!important}
 @media (max-width:760px){#grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(260px,auto)}.panel{min-height:260px}.audio{min-height:200px}}
@@ -153,13 +155,16 @@ class Panel {
     }
     g.strokeStyle = "#ffd21a"; g.lineWidth = Math.max(1, dpr); g.beginPath();
     for (let i = 0; i < n; i++) {
-      const x = i / (n - 1) * w, y = h - (vis[i] - bottom) / span * h;
+      const x = i / (n - 1) * w, y = Math.min(h - 1, h - (vis[i] - bottom) / span * h);
       if (i) g.lineTo(x, y); else g.moveTo(x, y);
     }
     g.stroke();
   }
   setScale(marks) {
-    const html = marks.map(m => `<div style="left:${(m.x * 100).toFixed(2)}%">${m.label}</div>`).join("");
+    const html = marks.map(m => {
+      const edge = m.x < 0.06 ? ' class="first"' : m.x > 0.94 ? ' class="last"' : "";
+      return `<div${edge} style="left:${(m.x * 100).toFixed(2)}%">${m.label}</div>`;
+    }).join("");
     if (this.scale.innerHTML !== html) this.scale.innerHTML = html;
   }
 }
