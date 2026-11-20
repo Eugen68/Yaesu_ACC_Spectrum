@@ -169,8 +169,8 @@ from byte 3050 and a VFO at 3038. VFO B isn't sent. The scope LEVEL isn't sent
 either: it only moves the levels. Where the FTDX10 keeps the audio scope
 settings (byte 3056 on the FTdx101) isn't known yet.
 
-Not checked yet: whether Cursor's left edge is kept up to date. In the Cursor
-capture it put the VFO at the right-hand edge.
+In Cursor and Fix the left edge is right: on 2026-11-21 the viewer's frequency
+scale matched the radio's own screen in both.
 
 ## Not known
 
@@ -179,5 +179,4 @@ capture it put the VFO at the right-hand edge.
   floor moved a little less than a strong carrier when the attenuator was
   switched.
 - Whether the FTdx101D sends the same. It should, but I've only got the MP.
-- On the FTDX10: where the audio scope settings are, and whether Cursor's left
-  edge is kept up to date.
+- On the FTDX10: where the audio scope settings are.
