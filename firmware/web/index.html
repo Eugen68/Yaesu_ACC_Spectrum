@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ACC Scope</title>
+<style>
+:root{--bg:#000;--panel:#0b0b0b;--line:#222;--text:#e8e8e8;--dim:#8a8a8a;--trace:#ffd21a;--vfo:#ff4040;--ok:#3ccf5a;--bad:#e04040}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px system-ui,-apple-system,Segoe UI,sans-serif}
+body{display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:6px 10px;background:#141414;border-bottom:1px solid var(--line)}
+header b{font-size:15px}
+#conn{display:inline-flex;align-items:center;gap:6px;color:var(--dim)}
+#conn i{width:9px;height:9px;border-radius:50%;background:var(--bad);display:inline-block}
+#conn.on i{background:var(--ok)}
+header button{font:inherit;color:var(--text);background:#2a2a2a;border:1px solid #444;border-radius:4px;padding:3px 10px;cursor:pointer}
+header button[aria-pressed=true]{background:#555}
+#grid{flex:1;display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr);grid-auto-rows:minmax(0,1fr);gap:6px;padding:6px;min-height:0}
+#grid.noaudio{grid-template-columns:minmax(0,1fr)}
+#grid.noaudio .audio{display:none}
+.panel{background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.panel h2{margin:0;padding:4px 8px;font-size:13px;font-weight:600;display:flex;gap:12px;flex-wrap:wrap}
+.panel h2 span{color:var(--dim);font-weight:400}
+.scale{position:relative;height:16px;font-size:11px;color:var(--dim)}
+.scale div{position:absolute;transform:translateX(-50%);white-space:nowrap}
+canvas{display:block;width:100%;min-height:0}
+.trace{flex:3}
+.fall{flex:2}
+footer{padding:4px 10px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hidden{display:none!important}
+@media (max-width:760px){#grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(260px,auto)}.panel{min-height:260px}.audio{min-height:200px}}
+</style>
+</head>
+<body>
+<header>
+  <b>ACC Scope</b>
+  <span id="radio"></span>
+  <span id="conn"><i></i><span id="conntext">Connecting…</span></span>
+  <span id="fps"></span>
+  <button id="pause" aria-pressed="false" title="Freeze the display (Space)">Pause</button>
+  <button id="audio" aria-pressed="true" title="Show the audio scopes (A)">Audio</button>
+</header>
+<div id="grid">
+  <section class="panel" id="p-main"><h2>Main <span class="info"></span></h2><div class="scale"></div><canvas class="trace"></canvas><canvas class="fall"></canvas></section>
+  <section class="panel audio" id="a-main"><h2>Main audio <span class="info"></span></h2><div class="scale"></div><canvas class="trace"></canvas><canvas class="fall"></canvas></section>
+  <section class="panel" id="p-sub"><h2>Sub <span class="info"></span></h2><div class="scale"></div><canvas class="trace"></canvas><canvas class="fall"></canvas></section>
+  <section class="panel audio" id="a-sub"><h2>Sub audio <span class="info"></span></h2><div class="scale"></div><canvas class="trace"></canvas><canvas class="fall"></canvas></section>
+</div>
+<footer id="status">Waiting for the board…</footer>
+<script>
+"use strict";
+// The frame layout is in docs/protocol.md. Each message on the WebSocket is a
+// frame's first 3102 bytes, as the radio sent them.
+const SPANS = [1e3, 2e3, 5e3, 10e3, 20e3, 50e3, 100e3, 200e3, 500e3, 1e6];
+const POINTS = 850, SPAN_POINTS = 791, CENTRE_POINT = 425, FFT_POINTS = 200;
+const P101 = ["Cursor", "Center", "Fix"], P10 = ["Center", "Cursor", "Fix"];
+
+function be32(b, o) { return b[o] * 16777216 + (b[o + 1] << 16) + (b[o + 2] << 8) + b[o + 3]; }
+
+function isFtdx10(b) {
+  for (let i = 3050; i < Math.min(b.length, 3102); i++) if (b[i]) return false;
+  const v = be32(b, 3038);
+  return v >= 30000 && v <= 75e6;
+}
+
+function receiver(b, levelsAt, vfoAt, leftAt, spanAt, places) {
+  const vfo = be32(b, vfoAt), left = be32(b, leftAt), sb = b[spanAt];
+  const span = (sb & 15) < SPANS.length ? SPANS[sb & 15] : 0;
+  const place = places[sb >> 6];
+  const valid = vfo >= 30000 && vfo <= 75e6 && span > 0 && !!place;
+  const centre = place === "Center" ? vfo : left + span / 2;
+  const levels = new Uint8Array(POINTS);
+  for (let i = 0; i < POINTS; i++) levels[i] = 255 - b[levelsAt + i];
+  return { vfo, span, place, valid, centre, levels };
+}
+
+function audio(b, at) {
+  const fft = new Uint8Array(FFT_POINTS);
+  for (let i = 0; i < FFT_POINTS; i++) fft[i] = 255 - b[at + i];
+  return fft;
+}
+
+function decode(b) {
+  const ten = isFtdx10(b);
+  return ten
+    ? { radio: "FTDX10", main: receiver(b, 0, 3038, 3046, 3030, P10), sub: null, mainFft: audio(b, 1700), subFft: null }
+    : { radio: "FTdx101", main: receiver(b, 0, 3068, 3076, 3062, P101), sub: receiver(b, 850, 3094, 3098, 3084, P101),
+        mainFft: audio(b, 1700), subFft: audio(b, 2300) };
+}
+
+// Black for the floor, then blue, cyan, green, yellow, red and white for the strongest.
+const PALETTE = (() => {
+  const stops = [[0, 0, 0, 0], [0.25, 0, 0, 140], [0.45, 0, 160, 220], [0.6, 40, 200, 80], [0.75, 255, 230, 0], [0.9, 255, 60, 0], [1, 255, 255, 255]];
+  const p = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let k = 0;
+    while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+    const [t0, r0, g0, b0] = stops[k], [t1, r1, g1, b1] = stops[k + 1], f = (t - t0) / (t1 - t0);
+    p[i * 3] = r0 + (r1 - r0) * f; p[i * 3 + 1] = g0 + (g1 - g0) * f; p[i * 3 + 2] = b0 + (b1 - b0) * f;
+  }
+  return p;
+})();
+
+function median(a) { const s = Array.from(a).sort((x, y) => x - y); return s[s.length >> 1]; }
+
+// One panel: a trace above a waterfall, both drawn from rows of levels.
+class Panel {
+  constructor(el, width, firstPoint) {
+    this.el = el; this.width = width; this.first = firstPoint || 0;
+    this.info = el.querySelector(".info"); this.scale = el.querySelector(".scale");
+    this.trace = el.querySelector(".trace"); this.fall = el.querySelector(".fall");
+    this.avg = null; this.key = ""; this.low = null; this.high = null; this.top = null;
+    this.fall.width = width; this.fall.height = 200;
+    this.fctx = this.fall.getContext("2d"); this.fctx.fillStyle = "#000"; this.fctx.fillRect(0, 0, width, 200);
+    this.row = this.fctx.createImageData(width, 1);
+  }
+  add(levels, key) {
+    // Average the last few rows, as the library's ScopeRefiner does, so the
+    // floor settles and weak signals stand out. A new span or band starts again.
+    if (!this.avg || key !== this.key) { this.avg = Float32Array.from(levels); this.key = key; this.low = null; }
+    else for (let i = 0; i < levels.length; i++) this.avg[i] += 0.3 * (levels[i] - this.avg[i]);
+    const vis = this.avg.subarray(this.first);
+    const lo = median(vis), hi = Math.max(...vis);
+    if (this.low === null) { this.low = lo; this.high = Math.max(hi, lo + 20); this.top = hi; }
+    else { this.low += 0.1 * (lo - this.low); this.high += 0.05 * (Math.max(hi, this.low + 20) - this.high); }
+    this.top = Math.max(hi, this.top === null ? hi : this.top - 0.2);
+    // A waterfall row from the raw levels.
+    const range = Math.max(1, this.high - this.low), d = this.row.data;
+    for (let x = 0; x < this.width; x++) {
+      const v = levels[Math.min(levels.length - 1, this.first + Math.floor(x * (levels.length - this.first) / this.width))];
+      const c = Math.max(0, Math.min(255, Math.round((v - this.low) / range * 255))) * 3;
+      d[x * 4] = PALETTE[c]; d[x * 4 + 1] = PALETTE[c + 1]; d[x * 4 + 2] = PALETTE[c + 2]; d[x * 4 + 3] = 255;
+    }
+    this.fctx.drawImage(this.fall, 0, 0, this.width, this.fall.height - 1, 0, 1, this.width, this.fall.height - 1);
+    this.fctx.putImageData(this.row, 0, 0);
+  }
+  draw(marks, vfoX) {
+    const c = this.trace, r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext("2d");
+    g.fillStyle = "#000"; g.fillRect(0, 0, w, h);
+    if (!this.avg) return;
+    const vis = this.avg.subarray(this.first), n = vis.length;
+    const bottom = this.low - 6, span = Math.max(20, this.top + 6 - bottom);
+    g.strokeStyle = "#222"; g.lineWidth = 1;
+    for (const m of marks) { const x = m.x * w; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+    for (let k = 1; k < 4; k++) { const y = h * k / 4; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    if (vfoX !== null && vfoX >= 0 && vfoX <= 1) {
+      g.strokeStyle = "#ff4040"; g.setLineDash([5 * dpr, 4 * dpr]);
+      g.beginPath(); g.moveTo(vfoX * w, 0); g.lineTo(vfoX * w, h); g.stroke(); g.setLineDash([]);
+    }
+    g.strokeStyle = "#ffd21a"; g.lineWidth = Math.max(1, dpr); g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * w, y = h - (vis[i] - bottom) / span * h;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.stroke();
+  }
+  setScale(marks) {
+    const html = marks.map(m => `<div style="left:${(m.x * 100).toFixed(2)}%">${m.label}</div>`).join("");
+    if (this.scale.innerHTML !== html) this.scale.innerHTML = html;
+  }
+}
+
+function kHz(hz) { return (hz / 1000).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function scopeMarks(rx) {
+  const marks = [], step = rx.span / 4;
+  for (let k = -2; k <= 2; k++) {
+    const f = rx.centre + k * step, p = CENTRE_POINT + (f - rx.centre) / (rx.span / SPAN_POINTS);
+    marks.push({ x: p / (POINTS - 1), label: kHz(f) });
+  }
+  return marks;
+}
+const audioMarks = [1, 2, 3].map(k => ({ x: (k * 50 - 1) / (FFT_POINTS - 2), label: k + " kHz" }));
+
+const panels = {
+  main: new Panel(document.getElementById("p-main"), POINTS),
+  sub: new Panel(document.getElementById("p-sub"), POINTS),
+  mainA: new Panel(document.getElementById("a-main"), FFT_POINTS - 1, 1),
+  subA: new Panel(document.getElementById("a-sub"), FFT_POINTS - 1, 1),
+};
+panels.mainA.setScale(audioMarks); panels.subA.setScale(audioMarks);
+
+let latest = null, paused = false, frames = 0, shown = { radio: "", hasSub: true };
+
+function showScope(panel, rx) {
+  if (!rx.valid) { panel.info.textContent = "No frequency in the frame"; return; }
+  panel.info.textContent = `VFO ${kHz(rx.vfo)} kHz · span ${rx.span >= 1e6 ? rx.span / 1e6 + " MHz" : rx.span / 1e3 + " kHz"} · ${rx.place}`;
+  panel.add(rx.levels, `${rx.span}/${rx.place}/${Math.round(rx.centre / (rx.span / 2))}`);
+  const marks = scopeMarks(rx); panel.setScale(marks);
+  panel.marks = marks; panel.vfoX = (CENTRE_POINT + (rx.vfo - rx.centre) / (rx.span / SPAN_POINTS)) / (POINTS - 1);
+}
+
+function onFrame(buf) {
+  frames++;
+  if (paused) return;
+  const f = decode(new Uint8Array(buf));
+  latest = f;
+  const hasSub = !!f.sub;
+  if (f.radio !== shown.radio) { shown.radio = f.radio; document.getElementById("radio").textContent = f.radio; }
+  if (hasSub !== shown.hasSub) {
+    shown.hasSub = hasSub;
+    for (const id of ["p-sub", "a-sub"]) document.getElementById(id).classList.toggle("hidden", !hasSub);
+  }
+  showScope(panels.main, f.main);
+  panels.mainA.add(f.mainFft, "a");
+  if (f.sub) { showScope(panels.sub, f.sub); panels.subA.add(f.subFft, "a"); }
+}
+
+function render() {
+  if (latest) {
+    panels.main.draw(panels.main.marks || [], panels.main.vfoX ?? null);
+    panels.mainA.draw(audioMarks, null);
+    if (latest.sub) { panels.sub.draw(panels.sub.marks || [], panels.sub.vfoX ?? null); panels.subA.draw(audioMarks, null); }
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+// The WebSocket is on port 81 of the board. ?ws=host:port picks another, for testing.
+const wsAddress = new URLSearchParams(location.search).get("ws") || `${location.hostname}:81`;
+function connect() {
+  const conn = document.getElementById("conn"), text = document.getElementById("conntext");
+  const ws = new WebSocket(`ws://${wsAddress}/`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { conn.classList.add("on"); text.textContent = "Connected"; };
+  ws.onmessage = e => { if (e.data instanceof ArrayBuffer && e.data.byteLength >= 3050) onFrame(e.data); };
+  ws.onclose = () => { conn.classList.remove("on"); text.textContent = "Reconnecting…"; setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+connect();
+
+setInterval(() => { document.getElementById("fps").textContent = frames + " frames/s"; frames = 0; }, 1000);
+
+async function pollStatus() {
+  try {
+    const r = await fetch("/status", { cache: "no-store" });
+    if (r.ok) document.getElementById("status").textContent = await r.text();
+  } catch (e) { /* the board is restarting or out of reach */ }
+}
+pollStatus(); setInterval(pollStatus, 5000);
+
+function toggle(id, on) { const b = document.getElementById(id); b.setAttribute("aria-pressed", on); return on; }
+document.getElementById("pause").onclick = () => { paused = toggle("pause", !paused); };
+document.getElementById("audio").onclick = () => {
+  const on = document.getElementById("audio").getAttribute("aria-pressed") !== "true";
+  toggle("audio", on); document.getElementById("grid").classList.toggle("noaudio", !on);
+};
+document.addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); document.getElementById("pause").click(); }
+  else if (e.key === "a" || e.key === "A") document.getElementById("audio").click();
+});
+</script>
+</body>
+</html>
