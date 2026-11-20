@@ -43,6 +43,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force firmware/release | Out-Null
           gh release download $env:FIRMWARE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*-merged.bin' --dir firmware/release --clobber
+          if ($LASTEXITCODE -ne 0) {
+            # A fork has no releases of its own: take the firmware from the original repository.
+            gh release download $env:FIRMWARE_TAG --repo mm5agm/Yaesu_ACC_Spectrum --pattern '*-merged.bin' --dir firmware/release --clobber
+          }
 
       - name: Publish
         shell: pwsh
