@@ -23,6 +23,22 @@ namespace YaesuAccScope
         Fix = 2,
     }
 
+    /// <summary>Which radio sent a frame, worked out from the frame's layout.</summary>
+    public enum AccRadio
+    {
+        /// <summary>
+        /// The FTdx101MP or D: two receivers, and the tuning for both in bytes
+        /// 3036 to 3101.
+        /// </summary>
+        Ftdx101 = 0,
+
+        /// <summary>
+        /// The FTDX10: one receiver, and its tuning in bytes 3030 to 3049. Bytes
+        /// 3050 on are zero, and the Sub rows and Sub audio are zero.
+        /// </summary>
+        Ftdx10 = 1,
+    }
+
     /// <summary>
     /// One frame from the FTdx101's ACC socket, decoded. Everything comes from
     /// the frame itself, with nothing from CAT. See docs/protocol.md for the
@@ -39,17 +55,50 @@ namespace YaesuAccScope
         /// <summary>Points in each receiver's scope row.</summary>
         public const int Points = 850;
 
+        /// <summary>
+        /// The FTdx101's placement codes, by the span byte's top 2 bits: 0 Cursor,
+        /// 1 Center, 2 Fix.
+        /// </summary>
+        private static readonly ScopePlacement[] Ftdx101Placements = { ScopePlacement.Cursor, ScopePlacement.Center, ScopePlacement.Fix };
+
+        /// <summary>
+        /// The FTDX10's placement codes, by the span byte's top 2 bits: 0 Center,
+        /// 1 Cursor, 2 Fix. Measured on 2026-11-20.
+        /// </summary>
+        private static readonly ScopePlacement[] Ftdx10Placements = { ScopePlacement.Center, ScopePlacement.Cursor, ScopePlacement.Fix };
+
         private AccFrame(byte[] raw)
         {
             Raw = raw;
-            Main = new ReceiverScope(raw, 0, vfoAt: 3068, leftAt: 3076, spanAt: 3062, modeAt: 2917, passbandAt: 3036);
-            Sub = new ReceiverScope(raw, Points, vfoAt: 3094, leftAt: 3098, spanAt: 3084, modeAt: 2918, passbandAt: 3040);
+            Radio = DetectRadio(raw);
+            if (Radio == AccRadio.Ftdx10)
+            {
+                // FTDX10, from captures/ftdx10: the span byte at 3030, the passband
+                // marker at 3034, the VFO at 3038 (and again at 3042), the left
+                // edge at 3046. There's no Sub receiver: its fields read zero.
+                Main = new ReceiverScope(raw, 0, vfoAt: 3038, leftAt: 3046, spanAt: 3030, modeAt: 2917, passbandAt: 3034, Ftdx10Placements);
+                Sub = new ReceiverScope(raw, Points, vfoAt: 3094, leftAt: 3098, spanAt: 3084, modeAt: 2918, passbandAt: 3040, Ftdx101Placements);
+            }
+            else
+            {
+                Main = new ReceiverScope(raw, 0, vfoAt: 3068, leftAt: 3076, spanAt: 3062, modeAt: 2917, passbandAt: 3036, Ftdx101Placements);
+                Sub = new ReceiverScope(raw, Points, vfoAt: 3094, leftAt: 3098, spanAt: 3084, modeAt: 2918, passbandAt: 3040, Ftdx101Placements);
+            }
             MainAudio = new AudioScope(raw, fftAt: 1700, oscAt: 1900);
             SubAudio = new AudioScope(raw, fftAt: 2300, oscAt: 2500);
         }
 
         /// <summary>The frame's bytes, as they came from the radio.</summary>
         public byte[] Raw { get; }
+
+        /// <summary>Which radio sent the frame, worked out from its layout.</summary>
+        public AccRadio Radio { get; }
+
+        /// <summary>
+        /// True when the radio has a Sub receiver. The FTDX10 has none, and its
+        /// <see cref="Sub"/> and <see cref="SubAudio"/> read zero.
+        /// </summary>
+        public bool HasSub => Radio != AccRadio.Ftdx10;
 
         /// <summary>The Main receiver's scope, VFO A.</summary>
         public ReceiverScope Main { get; }
@@ -85,6 +134,18 @@ namespace YaesuAccScope
             return decoded != null;
         }
 
+        /// <summary>
+        /// An FTDX10 frame ends at byte 3049, so bytes 3050 to 3101, where the
+        /// FTdx101 keeps both VFOs, are zero, and its own VFO sits at 3038.
+        /// </summary>
+        private static AccRadio DetectRadio(byte[] raw)
+        {
+            for (int i = 3050; i < MinLength; i++)
+                if (raw[i] != 0) return AccRadio.Ftdx101;
+            long vfo = ReadUInt32BigEndian(raw, 3038);
+            return vfo >= 30_000 && vfo <= 75_000_000 ? AccRadio.Ftdx10 : AccRadio.Ftdx101;
+        }
+
         internal static long ReadUInt32BigEndian(byte[] b, int at) =>
             ((long)b[at] << 24) | ((long)b[at + 1] << 16) | ((long)b[at + 2] << 8) | b[at + 3];
     }
@@ -114,11 +175,14 @@ namespace YaesuAccScope
         private readonly int _levelsAt;
         private readonly int _spanAt;
         private readonly int _modeAt;
+        private readonly ScopePlacement[] _placements;
         private byte[]? _levels;
 
-        internal ReceiverScope(byte[] raw, int levelsAt, int vfoAt, int leftAt, int spanAt, int modeAt, int passbandAt)
+        internal ReceiverScope(byte[] raw, int levelsAt, int vfoAt, int leftAt, int spanAt, int modeAt, int passbandAt,
+                               ScopePlacement[] placements)
         {
             _raw = raw;
+            _placements = placements;
             _levelsAt = levelsAt;
             _spanAt = spanAt;
             _modeAt = modeAt;
@@ -170,20 +234,23 @@ namespace YaesuAccScope
         /// <summary>The span the radio shows, in Hz, or 0 if the span byte isn't known.</summary>
         public int SpanHz => SpanIndex < Spans.Length ? Spans[SpanIndex] : 0;
 
-        /// <summary>Center, Cursor or Fix, from the span byte's top 2 bits.</summary>
+        /// <summary>
+        /// Center, Cursor or Fix, from the span byte's top 2 bits. The FTdx101
+        /// and the FTDX10 number them differently; this is already sorted out.
+        /// </summary>
         public ScopePlacement Placement
         {
             get
             {
                 int p = _raw[_spanAt] >> 6;
-                return p <= 2 ? (ScopePlacement)p : ScopePlacement.Unknown;
+                return p < _placements.Length ? _placements[p] : ScopePlacement.Unknown;
             }
         }
 
         /// <summary>
         /// The radio's scope mode byte, its SS P3 character: 0 to 2 are 3DSS, 3
         /// is the waterfall in Center, 6 Cursor and 9 Fix. Sub has shown 5 in
-        /// Center too.
+        /// Center too. The FTDX10 sends 0 for 3DSS, 4 Center, 7 Cursor and 10 Fix.
         /// </summary>
         public byte ScopeMode => _raw[_modeAt];
 

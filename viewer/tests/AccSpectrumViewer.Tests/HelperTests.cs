@@ -193,3 +193,12 @@ public class TraceTopTests
         Assert.InRange((220 - low) / range, 0.9, 0.92);
     }
 }
+
+public class RadioNameTests
+{
+    [Theory]
+    [InlineData(YaesuAccScope.AccRadio.Ftdx10, "FTDX10")]
+    [InlineData(YaesuAccScope.AccRadio.Ftdx101, "FTdx101")]
+    public void The_title_bar_names_the_radio(YaesuAccScope.AccRadio radio, string name) =>
+        Assert.Equal(name, MainForm.RadioName(radio));
+}

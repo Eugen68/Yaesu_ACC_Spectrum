@@ -141,6 +141,37 @@ USB (a 2 kHz tone) and Sub on 809 kHz USB (1 kHz):
 Bytes 2900-3101 not listed here stay the same frame to frame and haven't been
 worked out.
 
+## The FTDX10
+
+Measured on 2026-11-20 on an FTDX10, from the captures in
+[captures/ftdx10/](../captures/ftdx10/README.md). The same board, wiring,
+firmware and SPI mode 2 work unchanged. The frames are 4096 bytes, 25 a second,
+but the data ends at byte 3049, and the tuning sits in other bytes.
+
+| Bytes | FTDX10 | FTdx101 |
+|---|---|---|
+| 0-849 | Main's scope row, the same | Main's scope row |
+| 850-1699 | Zero: there's no Sub receiver | Sub's scope row |
+| 1700-2299 | Main's AF-FFT and oscilloscope, the same. A 1 kHz tone shows on point 50 | The same |
+| 2300-2899 | Zero | Sub's audio scope |
+| 2917 | Scope mode: 0 3DSS, 4 Center, 7 Cursor, 10 Fix | 0-2 3DSS, 3 Center, 6 Cursor, 9 Fix |
+| 3030 | Span and placement | 3062 |
+| 3034-3037 | The passband marker, VFO + 1500 Hz in USB, BE | 3036-3039 |
+| 3038-3041 | The VFO, BE, and again at 3042-3045 | 3068-3071 |
+| 3046-3049 | Left edge of the span, BE | 3076-3079 |
+| 3050 on | Zero | VFO B, Sub's tuning and more |
+
+The span byte's low 4 bits are the same span list. **Its top 2 bits number the
+placement differently:** 0 = Center, 1 = Cursor, 2 = Fix.
+
+The library tells the two apart from the frame alone: an FTDX10 frame has zeros
+from byte 3050 and a VFO at 3038. VFO B isn't sent. The scope LEVEL isn't sent
+either: it only moves the levels. Where the FTDX10 keeps the audio scope
+settings (byte 3056 on the FTdx101) isn't known yet.
+
+Not checked yet: whether Cursor's left edge is kept up to date. In the Cursor
+capture it put the VFO at the right-hand edge.
+
 ## Not known
 
 - What the frames do while the radio transmits. Nothing here transmits.
@@ -148,3 +179,5 @@ worked out.
   floor moved a little less than a strong carrier when the attenuator was
   switched.
 - Whether the FTdx101D sends the same. It should, but I've only got the MP.
+- On the FTDX10: where the audio scope settings are, and whether Cursor's left
+  edge is kept up to date.

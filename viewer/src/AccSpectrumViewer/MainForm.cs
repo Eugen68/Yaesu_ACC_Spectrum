@@ -39,6 +39,8 @@ internal sealed class MainForm : Form
     private double? _framesPerSecond;
     private bool? _framesDecode;
     private string? _port;
+    private bool _hasSub = true;
+    private AccRadio? _radio;
 
     public MainForm()
     {
@@ -143,10 +145,34 @@ internal sealed class MainForm : Form
         _scopes.SuspendLayout();
         _scopes.ColumnStyles[0].Width = show ? 100 - AudioPercent : 100;
         _scopes.ColumnStyles[1].Width = show ? AudioPercent : 0;
-        _mainAudio.Visible = _subAudio.Visible = show;
+        _mainAudio.Visible = show;
+        _subAudio.Visible = show && _hasSub;
         _osc.Enabled = show;
         _scopes.ResumeLayout();
     }
+
+    /// <summary>
+    /// Shows or hides the Sub row. The FTDX10 has no Sub receiver, so Main
+    /// takes the whole height.
+    /// </summary>
+    private void ShowSub(bool show)
+    {
+        _hasSub = show;
+        _scopes.SuspendLayout();
+        _scopes.RowStyles[0].Height = show ? 50 : 100;
+        _scopes.RowStyles[1].Height = show ? 50 : 0;
+        _sub.Visible = show;
+        _subAudio.Visible = show && _audio.Checked;
+        _scopes.ResumeLayout();
+    }
+
+    /// <summary>The radio's name for the title bar.</summary>
+    internal static string RadioName(AccRadio radio) => radio == AccRadio.Ftdx10 ? "FTDX10" : "FTdx101";
+
+    private void UpdateTitle() =>
+        Text = "ACC Spectrum Viewer " + Version +
+               (_port == null ? "" : " - board on " + _port) +
+               (_port == null || _radio == null ? "" : " - " + RadioName(_radio.Value));
 
     private static string Version =>
         typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "";
@@ -192,6 +218,12 @@ internal sealed class MainForm : Form
         {
             _framesThisSecond++;
             _framesDecode = frame.Main.IsValid || frame.Sub.IsValid;
+            if (frame.HasSub != _hasSub) ShowSub(frame.HasSub);
+            if (frame.Radio != _radio)
+            {
+                _radio = frame.Radio;
+                UpdateTitle();
+            }
             if (_pause.Checked) continue;
             _main.AddTrace(frame.Main);
             _sub.AddTrace(frame.Sub);
@@ -226,7 +258,8 @@ internal sealed class MainForm : Form
         _port = port;
         _state.Text = text;
         _tips.SetToolTip(_state, text);     // in full, when the window is too narrow for it
-        Text = "ACC Spectrum Viewer " + Version + (port == null ? "" : " - board on " + port);
+        if (port == null) _radio = null;
+        UpdateTitle();
         if (port == null)
         {
             _status = null;

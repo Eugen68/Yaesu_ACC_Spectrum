@@ -32,4 +32,18 @@ internal static class Captures
             frames.Add(AccFrame.Parse(bytes.AsSpan(at, FrameLength).ToArray()));
         return frames;
     }
+
+    /// <summary>
+    /// The frames in an FTDX10 capture in captures/ftdx10. tools/check_frames.py
+    /// saves the board's packets as they came, headers and all.
+    /// </summary>
+    public static IReadOnlyList<AccFrame> Ftdx10(string name)
+    {
+        var bytes = File.ReadAllBytes(PathOf(Path.Combine("ftdx10", name + ".bin")));
+        var frames = new List<AccFrame>();
+        foreach (var packet in new AccPacketReader().Feed(bytes))
+            if (packet.Type == AccPacketType.Frame) frames.Add(AccFrame.Parse(packet.Payload));
+        Assert.True(frames.Count >= 100, $"{name}: only {frames.Count} frames");
+        return frames;
+    }
 }
