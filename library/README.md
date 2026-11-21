@@ -13,7 +13,7 @@ itself, closed-source included. If you change the library, you share those chang
 under the LGPL. See [COPYING.LESSER](COPYING.LESSER) and [COPYING](COPYING). The
 firmware and tools in the rest of this repo stay GPL-3.0.
 
-Version 0.3.0, on nuget.org as [YaesuAccScope](https://www.nuget.org/packages/YaesuAccScope):
+Version 0.4.0, on nuget.org as [YaesuAccScope](https://www.nuget.org/packages/YaesuAccScope):
 
     dotnet add package YaesuAccScope
 
