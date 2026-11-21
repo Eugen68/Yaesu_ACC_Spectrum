@@ -5,8 +5,10 @@
 #include <Arduino.h>
 
 // Starts Wi-Fi and the web server, on their own task on core 0. With no
-// network saved, or with BOOT held at power-on, the board makes its own
-// network, ACC-Scope-xxxx, with a setup page at http://192.168.4.1.
+// network saved, with BOOT held for 3 s, or when the saved network can't be
+// joined for 30 s, the board makes its own network, ACC-Scope-xxxx, with a
+// setup page at http://192.168.4.1/wifi, and closes it again once it isn't
+// needed.
 void webSetup();
 
 // Hands a frame to the web task. Never waits: if the web task is busy with

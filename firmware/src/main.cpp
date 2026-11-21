@@ -44,7 +44,7 @@
 
 #include "web.h"
 
-static constexpr const char* FW_VERSION = "3.0.1";
+static constexpr const char* FW_VERSION = "3.0.2";
 
 static constexpr int PIN_CLK = 10;
 static constexpr int PIN_DATA2 = 11;   // the radio's data, into the slave's MOSI

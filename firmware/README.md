@@ -49,17 +49,25 @@ Version 3 keeps the USB pipe exactly as it was, so ACC Spectrum Viewer works as
 before, and adds the scope on a web page over Wi-Fi. Any browser on the home
 network can open it: a phone, a tablet or another PC.
 
-- **First start, or BOOT held while it powers up:** the board makes its own
-  network, `ACC-Scope-xxxx`, with no password. Join it from a phone and the
-  setup page opens (or go to http://192.168.4.1). Pick the home network, type
-  its password and save; the board restarts and joins it.
+- **First start:** the board makes its own network, `ACC-Scope-xxxx`, with no
+  password. Join it from a phone and the setup page opens (or go to
+  http://192.168.4.1/wifi). Pick the home network, type its password and save;
+  the board restarts and joins it.
 - **After that:** open http://acc-scope.local, or the address the status text
   gives, such as `wifi 192.168.1.20`. The page shows the scope and waterfall
   with the frequency scale, and the audio scope with its attenuators and
   timebase, for Main and, on an FTdx101, Sub. It tells the FTDX10 from the FTdx101 the same way the library does.
-- **If the saved network can't be joined for 30 seconds,** the setup network
-  comes up as well, so the network can be changed, and the board keeps trying.
-- **To forget the network,** send `w` on the USB, or hold BOOT at power-on.
+- **To change the network,** hold BOOT for 3 seconds while the board is
+  running. The setup network comes up for 10 minutes, and the board stays on
+  the saved network meanwhile. (Not at power-on: BOOT is a strapping pin, so
+  held then it puts the ESP32-S3 in download mode and this firmware never runs.)
+- **If the saved network can't be joined for 30 seconds,** after a router
+  restart say, the setup network comes up as well, so the network can be
+  changed, and the board keeps trying. It closes again once the board has
+  rejoined and nobody is on it.
+- The setup page answers only on the setup network, never on the home network.
+- **To forget the network,** send `w` on the USB. The board restarts with no
+  network saved, so the setup network comes up.
 - The status text gives the Wi-Fi state before `edges/s`: `wifi 192.168.1.20`,
   `wifi connecting` or `wifi setup ACC-Scope-xxxx`.
 

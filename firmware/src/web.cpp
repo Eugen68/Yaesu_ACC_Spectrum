@@ -26,6 +26,8 @@ static constexpr size_t SEND_BYTES = 3102;       // the FTdx101's data; the FTDX
 static constexpr int MAX_CLIENTS = 3;
 static constexpr int PIN_BOOT = 0;               // the BOOT button
 static constexpr uint32_t CONNECT_GIVE_UP_MS = 30000;
+static constexpr uint32_t BOOT_HOLD_MS = 3000;   // BOOT held this long opens the setup network
+static constexpr uint32_t BUTTON_SETUP_MS = 600000;   // and keeps it open this long
 static const char* HOSTNAME = "acc-scope";
 
 static WebServer http(80);
@@ -35,6 +37,11 @@ static WiFiClient wsClients[MAX_CLIENTS];
 static Preferences wifiPrefs;
 static String savedSsid, savedPass, apName;
 static volatile bool apOn = false;
+// Why the setup network is up: no network saved (until one is), BOOT held
+// (for BUTTON_SETUP_MS), or the saved network lost (until it's joined again).
+enum class SetupWhy { None, NoNetwork, Button, Fallback };
+static SetupWhy setupWhy = SetupWhy::None;
+static uint32_t setupSince = 0;
 static volatile int clientCount = 0;
 
 static SemaphoreHandle_t frameLock;
@@ -78,12 +85,31 @@ void webForget() {
 
 // --- The setup network and pages -------------------------------------------
 
-static void startSetupNetwork() {
+static void startSetupNetwork(SetupWhy why) {
+    setupWhy = why;
+    setupSince = millis();
     if (apOn) return;
     WiFi.mode(savedSsid.isEmpty() ? WIFI_AP : WIFI_AP_STA);
     WiFi.softAP(apName.c_str());
     dns.start(53, "*", WiFi.softAPIP());
     apOn = true;
+}
+
+// The setup network is open, with no password, so it only stays up while it's
+// needed; the board keeps the saved network and its station side throughout.
+static void stopSetupNetwork() {
+    if (!apOn) return;
+    apOn = false;
+    setupWhy = SetupWhy::None;
+    dns.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+}
+
+// True when the request came in on the setup network rather than the home
+// network: only those may see or change the Wi-Fi settings.
+static bool fromSetupNetwork() {
+    return apOn && http.client().localIP() == WiFi.softAPIP();
 }
 
 static String htmlEscape(const String& s) {
@@ -106,6 +132,10 @@ static const char WIFI_PAGE_HEAD[] =
     "small{color:#aaa}</style></head><body><main><h2>ACC Scope Wi-Fi</h2>";
 
 static void handleWifiForm() {
+    if (!fromSetupNetwork()) {
+        http.send(404, "text/plain", "Not found");
+        return;
+    }
     String page = WIFI_PAGE_HEAD;
     page += "<form method='post' action='/wifi'><label>Network</label><select name='ssid'>";
     int n = WiFi.scanNetworks();
@@ -114,7 +144,8 @@ static void handleWifiForm() {
         String s = WiFi.SSID(i);
         if (s.isEmpty()) continue;
         any = true;
-        page += "<option" + String(s == savedSsid ? " selected" : "") + ">" + htmlEscape(s) + "</option>";
+        page += "<option value=\"" + htmlEscape(s) + "\"" + String(s == savedSsid ? " selected" : "") + ">" +
+                htmlEscape(s) + "</option>";
     }
     WiFi.scanDelete();
     if (!any) page += "<option value=''>No networks found</option>";
@@ -127,6 +158,10 @@ static void handleWifiForm() {
 }
 
 static void handleWifiSave() {
+    if (!fromSetupNetwork()) {
+        http.send(404, "text/plain", "Not found");
+        return;
+    }
     String ssid = http.arg("other");
     ssid.trim();
     if (ssid.isEmpty()) ssid = http.arg("ssid");
@@ -145,7 +180,7 @@ static void handleWifiSave() {
 }
 
 static void handleRoot() {
-    if (apOn && WiFi.status() != WL_CONNECTED) {
+    if (fromSetupNetwork() && WiFi.status() != WL_CONNECTED) {
         http.sendHeader("Location", "/wifi");
         http.send(302, "text/plain", "");
         return;
@@ -166,7 +201,7 @@ static void handleStatus() {
 }
 
 static void handleNotFound() {
-    if (apOn) {   // the setup network: send every address to the setup page
+    if (fromSetupNetwork()) {   // send every address to the setup page
         http.sendHeader("Location", "http://192.168.4.1/wifi");
         http.send(302, "text/plain", "");
     } else {
@@ -258,21 +293,47 @@ static void wsTidy() {
 
 // --- The task ----------------------------------------------------------------
 
+// BOOT is a strapping pin: held at power-on it starts the ROM's download mode
+// and this firmware never runs. So it's read here, while running: held for
+// BOOT_HOLD_MS, it opens the setup network.
+static bool bootHeld() {
+    static uint32_t downSince = 0;
+    static bool fired = false;
+    if (digitalRead(PIN_BOOT) != LOW) {
+        downSince = 0;
+        fired = false;
+        return false;
+    }
+    if (!downSince) downSince = millis() | 1;
+    if (fired || millis() - downSince < BOOT_HOLD_MS) return false;
+    fired = true;
+    return true;
+}
+
 static void webTask(void*) {
     uint32_t lastSeq = 0;
-    uint32_t started = millis();
+    uint32_t lastConnected = millis();
     bool mdnsOn = false;
     for (;;) {
         if (apOn) dns.processNextRequest();
         http.handleClient();
         bool connected = WiFi.status() == WL_CONNECTED;
+        if (connected) lastConnected = millis();
         if (connected && !mdnsOn) {
             mdnsOn = MDNS.begin(HOSTNAME);
             if (mdnsOn) MDNS.addService("http", "tcp", 80);
         }
+        if (bootHeld()) startSetupNetwork(savedSsid.isEmpty() ? SetupWhy::NoNetwork : SetupWhy::Button);
         // Can't join the saved network: make the setup network as well, so it
         // can be changed, and keep trying the saved one.
-        if (!connected && !apOn && millis() - started > CONNECT_GIVE_UP_MS) startSetupNetwork();
+        if (!connected && !apOn && !savedSsid.isEmpty() && millis() - lastConnected > CONNECT_GIVE_UP_MS)
+            startSetupNetwork(SetupWhy::Fallback);
+        // Close it again once it isn't needed: when the saved network is back,
+        // or when BOOT's time is up and the board is on the saved network.
+        if (apOn && connected && WiFi.softAPgetStationNum() == 0 &&
+            (setupWhy == SetupWhy::Fallback ||
+             (setupWhy == SetupWhy::Button && millis() - setupSince > BUTTON_SETUP_MS)))
+            stopSetupNetwork();
         wsAccept();
         wsTidy();
         if (clientCount) wsSendLatest(lastSeq);
@@ -293,13 +354,12 @@ void webSetup() {
     apName = name;
 
     pinMode(PIN_BOOT, INPUT_PULLUP);
-    bool setupWanted = savedSsid.isEmpty() || digitalRead(PIN_BOOT) == LOW;
 
     WiFi.persistent(false);
     WiFi.setHostname(HOSTNAME);
     WiFi.setSleep(false);   // keeps the stream smooth
-    if (setupWanted) {
-        startSetupNetwork();
+    if (savedSsid.isEmpty()) {
+        startSetupNetwork(SetupWhy::NoNetwork);
     } else {
         WiFi.mode(WIFI_STA);
         WiFi.setAutoReconnect(true);
