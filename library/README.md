@@ -81,6 +81,10 @@ frame's layout and keeps to it: it changes only after 5 frames in a row read as
 the other radio. If you decode frames yourself, an `AccRadioSettler` and
 `AccFrame.Parse(bytes, radio)` do the same.
 
+From version 0.4.1 the audio scope's `FftAttenuator`, `OscAttenuator` and
+`OscTime` read right on the FTDX10 too: it keeps them in byte 3026, where the
+FTdx101 uses 3056 (found by Eugene, [#83](https://github.com/mm5agm/Yaesu_ACC_Spectrum/pull/83)).
+
 ## What it never does
 
 - **It never writes to the board.** A byte sent to the board can change its SPI
