@@ -155,6 +155,7 @@ but the data ends at byte 3049, and the tuning sits in other bytes.
 | 1700-2299 | Main's AF-FFT and oscilloscope, the same. A 1 kHz tone shows on point 50 | The same |
 | 2300-2899 | Zero | Sub's audio scope |
 | 2917 | Scope mode: 0 3DSS, 4 Center, 7 Cursor, 10 Fix | 0-2 3DSS, 3 Center, 6 Cursor, 9 Fix |
+| 3026 | The audio scope settings, the same bits | 3056 |
 | 3030 | Span and placement | 3062 |
 | 3034-3037 | The passband marker, VFO + 1500 Hz in USB, BE | 3036-3039 |
 | 3038-3041 | The VFO, BE, and again at 3042-3045 | 3068-3071 |
@@ -168,8 +169,13 @@ The library tells the two apart from the frame alone: an FTDX10 frame has zeros
 from byte 3050 and a VFO at 3038. `AccSerialReader` takes the first frame's
 answer, then changes layout only after 5 frames in a row (a fifth of a second)
 read as the other radio, so one garbled frame can't flip it. VFO B isn't sent. The scope LEVEL isn't sent
-either: it only moves the levels. Where the FTDX10 keeps the audio scope
-settings (byte 3056 on the FTdx101) isn't known yet.
+either: it only moves the levels.
+
+The audio scope settings are in byte 3026, with the same bits as byte 3056 on
+the FTdx101: bits 0-2 the oscilloscope time, bits 3-4 the oscilloscope
+attenuator, bits 5-6 the AF-FFT attenuator. Found on 2026-11-21 by changing one
+setting at a time (captures/ftdx10/ftdx10-audio-*.bin): FFT att 1 gave 0x20,
+FFT att 2 0x40, oscilloscope att 1 0x08 and time t3 0x03, against 0x00.
 
 In Cursor and Fix the left edge is right: on 2026-11-21 the viewer's frequency
 scale matched the radio's own screen in both.
@@ -181,4 +187,3 @@ scale matched the radio's own screen in both.
   floor moved a little less than a strong carrier when the attenuator was
   switched.
 - Whether the FTdx101D sends the same. It should, but I've only got the MP.
-- On the FTDX10: where the audio scope settings are.

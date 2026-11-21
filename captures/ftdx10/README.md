@@ -22,4 +22,15 @@ named), VFO B on 7.200.000.
 | ftdx10-14074-20k-level30.bin | 14.074.000, span 20k, Center, LEVEL +30 |
 | ftdx10-ton-1k.bin | An AM carrier on 864 kHz, VFO on 863.000 USB: a 1 kHz tone |
 
+The audio scope captures, taken on 2026-11-21 on 7.021.000, span 20k, Center,
+each with one of the radio's audio scope settings changed from the first:
+
+| File | Audio scope settings | Byte 3026 |
+|---|---|---|
+| ftdx10-audio-base.bin | AF-FFT att 0, oscilloscope att 0, time 1 ms (t0) | 0x00 |
+| ftdx10-audio-fftatt1.bin | AF-FFT att 1 | 0x20 |
+| ftdx10-audio-fftatt2.bin | AF-FFT att 2 | 0x40 |
+| ftdx10-audio-oscatt1.bin | Oscilloscope att 1 | 0x08 |
+| ftdx10-audio-time3.bin | Time 30 ms (t3) | 0x03 |
+
 The layout they show is in [docs/protocol.md](../../docs/protocol.md#the-ftdx10).
