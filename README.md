@@ -12,7 +12,7 @@ for Main and Sub at the radio's full 25 frames a second. No SDR and no IF tap
 is needed.
 
 It works on my FTdx101MP, and on an FTDX10 with the same board, wiring and
-firmware. The FTDX10 has one receiver and keeps its tuning in other bytes of the
+firmware. FTDX10 support is the work of [Eugene YO9VA](https://github.com/Eugen68) ([#80](https://github.com/mm5agm/Yaesu_ACC_Spectrum/pull/80)). The FTDX10 has one receiver and keeps its tuning in other bytes of the
 frame; the library and the viewer tell the two apart on their own (see
 [The FTDX10](docs/protocol.md#the-ftdx10)). The FTDX101D is expected to send the
 same as the MP. If you have one, I'd like to hear how it goes. The FT-710 doesn't need it: it
@@ -147,6 +147,12 @@ can be wired straight to an ESP32. The code is my own.
 
 Thanks to all of them. Their pages are the place to read up on how the data was
 found.
+
+FTDX10 support here is the work of [Eugene YO9VA](https://github.com/Eugen68). He captured the frames
+on his own FTDX10, worked out where it keeps its tuning, and wrote the library
+and viewer changes and their tests
+([#80](https://github.com/mm5agm/Yaesu_ACC_Spectrum/pull/80)). Thank you,
+Eugene.
 
 ## Layout
 

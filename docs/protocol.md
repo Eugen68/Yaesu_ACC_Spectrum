@@ -143,7 +143,7 @@ worked out.
 
 ## The FTDX10
 
-Measured on 2026-11-20 on an FTDX10, from the captures in
+Measured on 2026-11-20 by [Eugene YO9VA](https://github.com/Eugen68) on his FTDX10, from the captures in
 [captures/ftdx10/](../captures/ftdx10/README.md). The same board, wiring,
 firmware and SPI mode 2 work unchanged. The frames are 4096 bytes, 25 a second,
 but the data ends at byte 3049, and the tuning sits in other bytes.

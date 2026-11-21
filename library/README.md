@@ -73,6 +73,8 @@ you need to, and don't block: the frames come every 40 ms.
 
 ### FTdx101 or FTDX10
 
+FTDX10 support is the work of [Eugene YO9VA](https://github.com/Eugen68) ([#80](https://github.com/mm5agm/Yaesu_ACC_Spectrum/pull/80)).
+
 `e.Frame.Radio` says which radio the board is on, and `e.Frame.HasSub` is false
 on the FTDX10, which has no Sub receiver. The reader works it out from the
 frame's layout and keeps to it: it changes only after 5 frames in a row read as
