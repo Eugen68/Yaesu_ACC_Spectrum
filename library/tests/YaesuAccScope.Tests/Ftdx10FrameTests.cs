@@ -84,3 +84,29 @@ public class Ftdx10FrameTests
         }
     }
 }
+
+/// <summary>
+/// The FTDX10's audio scope settings, from captures taken with one setting
+/// changed at a time.
+/// </summary>
+public class Ftdx10AudioSettingsTests
+{
+    [Theory]
+    [InlineData("ftdx10-audio-base", 0, 0, 0)]
+    [InlineData("ftdx10-audio-fftatt1", 1, 0, 0)]
+    [InlineData("ftdx10-audio-fftatt2", 2, 0, 0)]
+    [InlineData("ftdx10-audio-oscatt1", 0, 1, 0)]
+    [InlineData("ftdx10-audio-time3", 0, 0, 3)]
+    // The tuning captures were all taken with the time on 3 ms.
+    [InlineData("ftdx10-14074-20k", 0, 0, 1)]
+    public void Audio_scope_settings(string capture, int fftAtt, int oscAtt, int time)
+    {
+        foreach (var frame in Captures.Ftdx10(capture))
+        {
+            Assert.Equal(AccRadio.Ftdx10, frame.Radio);
+            Assert.Equal(fftAtt, frame.MainAudio.FftAttenuator);
+            Assert.Equal(oscAtt, frame.MainAudio.OscAttenuator);
+            Assert.Equal(time, frame.MainAudio.OscTime);
+        }
+    }
+}

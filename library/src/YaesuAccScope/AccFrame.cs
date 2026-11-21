@@ -86,8 +86,11 @@ namespace YaesuAccScope
                 Main = new ReceiverScope(raw, 0, vfoAt: 3068, leftAt: 3076, spanAt: 3062, modeAt: 2917, passbandAt: 3036, Ftdx101Placements);
                 Sub = new ReceiverScope(raw, Points, vfoAt: 3094, leftAt: 3098, spanAt: 3084, modeAt: 2918, passbandAt: 3040, Ftdx101Placements);
             }
-            MainAudio = new AudioScope(raw, fftAt: 1700, oscAt: 1900);
-            SubAudio = new AudioScope(raw, fftAt: 2300, oscAt: 2500);
+            // The audio scope settings byte: 3056 on the FTdx101, 3026 on the FTDX10,
+            // with the same bits (captures/ftdx10/ftdx10-audio-*.bin).
+            int settingsAt = Radio == AccRadio.Ftdx10 ? AudioScope.Ftdx10SettingsAt : AudioScope.Ftdx101SettingsAt;
+            MainAudio = new AudioScope(raw, fftAt: 1700, oscAt: 1900, settingsAt);
+            SubAudio = new AudioScope(raw, fftAt: 2300, oscAt: 2500, settingsAt);
         }
 
         /// <summary>The frame's bytes, as they came from the radio.</summary>
@@ -328,8 +331,14 @@ namespace YaesuAccScope
         /// <summary>Hz between AF-FFT points: point 0 is 0 Hz and point 199 is 3,980 Hz.</summary>
         public const double HzPerPoint = 20.0;
 
-        /// <summary>The byte holding the shared audio scope settings.</summary>
-        internal const int SettingsAt = 3056;
+        /// <summary>The byte holding the shared audio scope settings on the FTdx101.</summary>
+        internal const int Ftdx101SettingsAt = 3056;
+
+        /// <summary>
+        /// The same byte on the FTDX10, with the same bits. Found on 2026-11-21 by
+        /// changing one setting at a time.
+        /// </summary>
+        internal const int Ftdx10SettingsAt = 3026;
 
         /// <summary>The oscilloscope time settings t0 to t5, as the radio's CAT manual names them.</summary>
         public static IReadOnlyList<string> OscTimeNames { get; } = new[] { "1 ms", "3 ms", "10 ms", "30 ms", "100 ms", "300 ms" };
@@ -337,11 +346,13 @@ namespace YaesuAccScope
         private readonly byte[] _raw;
         private readonly int _fftAt;
         private readonly int _oscAt;
+        private readonly int _settingsAt;
         private byte[]? _fft;
 
-        internal AudioScope(byte[] raw, int fftAt, int oscAt)
+        internal AudioScope(byte[] raw, int fftAt, int oscAt, int settingsAt)
         {
             _raw = raw;
+            _settingsAt = settingsAt;
             _fftAt = fftAt;
             _oscAt = oscAt;
         }
@@ -389,16 +400,16 @@ namespace YaesuAccScope
         /// its time, so slower settings show the envelope rather than cycles.
         /// Shared by both receivers.
         /// </summary>
-        public int OscTime => _raw[SettingsAt] & 0x07;
+        public int OscTime => _raw[_settingsAt] & 0x07;
 
         /// <summary>
         /// The oscilloscope attenuator, 0 to 2. At 0 a strong signal clips at
         /// about 2 and 250. Shared by both receivers.
         /// </summary>
-        public int OscAttenuator => (_raw[SettingsAt] >> 3) & 0x03;
+        public int OscAttenuator => (_raw[_settingsAt] >> 3) & 0x03;
 
         /// <summary>The AF-FFT attenuator, 0 to 2. Shared by both receivers.</summary>
-        public int FftAttenuator => (_raw[SettingsAt] >> 5) & 0x03;
+        public int FftAttenuator => (_raw[_settingsAt] >> 5) & 0x03;
 
         private static int CheckColumn(int column)
         {
