@@ -2,6 +2,7 @@
 # table, boot_app0 and the app into one file that flashes at address 0, for
 # the release. The offsets and flash settings come from PlatformIO itself.
 Import("env")
+import os
 import re
 
 def merge(source, target, env):
@@ -9,6 +10,7 @@ def merge(source, target, env):
     src = open(env.subst("$PROJECT_SRC_DIR/main.cpp"), encoding="utf-8").read()
     version = re.search(r'FW_VERSION = "([^"]+)"', src).group(1)
     out = env.subst(f"$PROJECT_DIR/release/yaesu-acc-firmware-{version}-merged.bin")
+    os.makedirs(os.path.dirname(out), exist_ok=True)   # release/ isn't in git, so a fresh clone has none
     images = []
     for offset, path in env.get("FLASH_EXTRA_IMAGES", []):
         images += [offset, env.subst(path)]
