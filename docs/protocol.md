@@ -165,7 +165,9 @@ The span byte's low 4 bits are the same span list. **Its top 2 bits number the
 placement differently:** 0 = Center, 1 = Cursor, 2 = Fix.
 
 The library tells the two apart from the frame alone: an FTDX10 frame has zeros
-from byte 3050 and a VFO at 3038. VFO B isn't sent. The scope LEVEL isn't sent
+from byte 3050 and a VFO at 3038. `AccSerialReader` takes the first frame's
+answer, then changes layout only after 5 frames in a row (a fifth of a second)
+read as the other radio, so one garbled frame can't flip it. VFO B isn't sent. The scope LEVEL isn't sent
 either: it only moves the levels. Where the FTDX10 keeps the audio scope
 settings (byte 3056 on the FTdx101) isn't known yet.
 

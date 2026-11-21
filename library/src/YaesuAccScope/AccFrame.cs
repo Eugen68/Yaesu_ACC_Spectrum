@@ -67,10 +67,12 @@ namespace YaesuAccScope
         /// </summary>
         private static readonly ScopePlacement[] Ftdx10Placements = { ScopePlacement.Center, ScopePlacement.Cursor, ScopePlacement.Fix };
 
-        private AccFrame(byte[] raw)
+        private AccFrame(byte[] raw) : this(raw, DetectRadio(raw)) { }
+
+        private AccFrame(byte[] raw, AccRadio radio)
         {
             Raw = raw;
-            Radio = DetectRadio(raw);
+            Radio = radio;
             if (Radio == AccRadio.Ftdx10)
             {
                 // FTDX10, from captures/ftdx10: the span byte at 3030, the passband
@@ -91,7 +93,10 @@ namespace YaesuAccScope
         /// <summary>The frame's bytes, as they came from the radio.</summary>
         public byte[] Raw { get; }
 
-        /// <summary>Which radio sent the frame, worked out from its layout.</summary>
+        /// <summary>
+        /// Which radio sent the frame, worked out from its layout, or the radio it
+        /// was decoded as with <see cref="Parse(byte[], AccRadio)"/>.
+        /// </summary>
         public AccRadio Radio { get; }
 
         /// <summary>
@@ -125,6 +130,18 @@ namespace YaesuAccScope
             if (frame.Length < MinLength)
                 throw new ArgumentException($"A frame needs at least {MinLength} bytes; this one has {frame.Length}.", nameof(frame));
             return new AccFrame(frame);
+        }
+
+        /// <summary>
+        /// Decodes a frame as the given radio's layout, whatever the frame looks
+        /// like. <see cref="AccSerialReader"/> uses this with
+        /// <see cref="AccRadioSettler"/> so one odd frame can't flip the layout.
+        /// Throws if it's shorter than <see cref="MinLength"/>.
+        /// </summary>
+        public static AccFrame Parse(byte[] frame, AccRadio radio)
+        {
+            Parse(frame);
+            return new AccFrame(frame, radio);
         }
 
         /// <summary>Decodes a frame, or returns false if it's too short.</summary>
