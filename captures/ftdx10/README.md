@@ -1,6 +1,6 @@
 # FTDX10 captures
 
-Taken on 2026-11-20 with `tools/check_frames.py --seconds 5`, so each file is
+Taken by [Eugene YO9VA](https://github.com/Eugen68) on his FTDX10 on 2026-11-20 with `tools/check_frames.py --seconds 5`, so each file is
 the board's packets as they came, headers and all (firmware 2.0.1, SPI mode 2).
 About 125 frames each.
 

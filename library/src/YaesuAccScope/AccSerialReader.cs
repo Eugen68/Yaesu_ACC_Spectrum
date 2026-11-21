@@ -55,6 +55,7 @@ namespace YaesuAccScope
     {
         private readonly object _gate = new object();
         private readonly AccPacketReader _packets = new AccPacketReader();
+        private readonly AccRadioSettler _radio = new AccRadioSettler();
         private SerialPort? _port;
         private Thread? _thread;
         private volatile bool _stopping;
@@ -101,6 +102,7 @@ namespace YaesuAccScope
                 if (_thread != null) return;
                 _stopping = false;
                 _packets.Reset();
+                _radio.Reset();
                 FramesReceived = 0;
                 _port = OpenQuietly(PortName);
                 _thread = new Thread(Run) { IsBackground = true, Name = "ACC scope reader " + PortName };
@@ -191,6 +193,8 @@ namespace YaesuAccScope
             if (packet.Type == AccPacketType.Frame)
             {
                 if (!AccFrame.TryParse(packet.Payload, out var frame)) return;
+                var radio = _radio.Settle(frame!.Radio);
+                if (radio != frame.Radio) frame = AccFrame.Parse(packet.Payload, radio);
                 FramesReceived++;
                 FrameReceived?.Invoke(this, new AccFrameEventArgs(frame!, packet));
             }
