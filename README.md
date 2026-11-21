@@ -11,10 +11,11 @@ board over USB, so a PC program can draw the radio's spectrum and waterfall
 for Main and Sub at the radio's full 25 frames a second. No SDR and no IF tap
 is needed.
 
-It works on my FTdx101MP. The FTDX101D and FTDX10 are expected to send the
-same data on the same socket ([other people's projects](#credits-and-background)
-have done it on the FTDX10), so the same board and code should suit them too.
-If you have one, I'd like to hear how it goes. The FT-710 doesn't need it: it
+It works on my FTdx101MP, and on an FTDX10 with the same board, wiring and
+firmware. The FTDX10 has one receiver and keeps its tuning in other bytes of the
+frame; the library and the viewer tell the two apart on their own (see
+[The FTDX10](docs/protocol.md#the-ftdx10)). The FTDX101D is expected to send the
+same as the MP. If you have one, I'd like to hear how it goes. The FT-710 doesn't need it: it
 already sends its scope over USB.
 
 ![ACC Spectrum Viewer: Main on 14,074 kHz and Sub on 18,100 kHz, each a trace above a waterfall with the FT8 signals, and beside each its audio scope: the AF-FFT from 0 to 4 kHz above an audio waterfall. The wiring check along the bottom is all green.](docs/images/viewer.png)
