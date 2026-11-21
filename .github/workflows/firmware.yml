@@ -40,3 +40,4 @@ jobs:
         with:
           name: yaesu-acc-firmware-${{ env.VERSION }}
           path: firmware/release/*-merged.bin
+          if-no-files-found: error
