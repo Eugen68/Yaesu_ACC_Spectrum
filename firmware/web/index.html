@@ -31,7 +31,7 @@ canvas{display:block;width:100%;height:0;min-height:0}
 .fall{flex:2 1 0}
 footer{padding:4px 10px;font-size:12px;color:var(--dim);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hidden{display:none!important}
-@media (max-width:760px){#grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(260px,auto)}.panel{min-height:260px}.audio{min-height:200px}}
+@media (max-width:760px){body{height:auto;min-height:100%}#grid{flex:1 0 auto;grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(260px,auto)}.panel{min-height:260px}.audio{min-height:200px}}
 </style>
 </head>
 <body>
@@ -83,12 +83,21 @@ function audio(b, at) {
   return fft;
 }
 
+// The audio scope settings byte: 3026 on the FTDX10, 3056 on the FTdx101.
+// Bits 0-2 the oscilloscope time, bits 3-4 its attenuator, bits 5-6 the AF-FFT attenuator.
+const OSC_TIMES = ["1 ms", "3 ms", "10 ms", "30 ms", "100 ms", "300 ms"];
+function audioSettings(v) {
+  const att = n => (n <= 2 ? n * 10 + " dB" : "?");
+  return `AF-FFT att ${att((v >> 5) & 3)} · OSC att ${att((v >> 3) & 3)} · time ${OSC_TIMES[v & 7] || "?"}`;
+}
+
 function decode(b) {
   const ten = isFtdx10(b);
   return ten
-    ? { radio: "FTDX10", main: receiver(b, 0, 3038, 3046, 3030, P10), sub: null, mainFft: audio(b, 1700), subFft: null }
+    ? { radio: "FTDX10", main: receiver(b, 0, 3038, 3046, 3030, P10), sub: null, mainFft: audio(b, 1700), subFft: null,
+        settings: audioSettings(b[3026]) }
     : { radio: "FTdx101", main: receiver(b, 0, 3068, 3076, 3062, P101), sub: receiver(b, 850, 3094, 3098, 3084, P101),
-        mainFft: audio(b, 1700), subFft: audio(b, 2300) };
+        mainFft: audio(b, 1700), subFft: audio(b, 2300), settings: audioSettings(b[3056]) };
 }
 
 // Black for the floor, then blue, cyan, green, yellow, red and white for the strongest.
@@ -212,6 +221,7 @@ function onFrame(buf) {
   }
   showScope(panels.main, f.main);
   panels.mainA.add(f.mainFft, "a");
+  if (f.settings !== shown.settings) { shown.settings = f.settings; panels.mainA.info.textContent = panels.subA.info.textContent = f.settings; }
   if (f.sub) { showScope(panels.sub, f.sub); panels.subA.add(f.subFft, "a"); }
 }
 
