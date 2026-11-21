@@ -55,8 +55,8 @@ network can open it: a phone, a tablet or another PC.
   its password and save; the board restarts and joins it.
 - **After that:** open http://acc-scope.local, or the address the status text
   gives, such as `wifi 192.168.1.20`. The page shows the scope and waterfall
-  with the frequency scale, and the audio scope, for Main and, on an FTdx101,
-  Sub. It tells the FTDX10 from the FTdx101 the same way the library does.
+  with the frequency scale, and the audio scope with its attenuators and
+  timebase, for Main and, on an FTdx101, Sub. It tells the FTDX10 from the FTdx101 the same way the library does.
 - **If the saved network can't be joined for 30 seconds,** the setup network
   comes up as well, so the network can be changed, and the board keeps trying.
 - **To forget the network,** send `w` on the USB, or hold BOOT at power-on.
@@ -69,9 +69,11 @@ in by `embed_web.py`), `/status` and `/wifi`. Port 81 is a WebSocket that sends
 each frame's first 3102 bytes as one binary message, to up to three browsers. A
 browser that can't keep up is dropped and reconnects.
 
-Not yet checked on the radio: whether Wi-Fi traffic disturbs the SPI capture.
-`tools/check_frames.py` shows it: the data should still end on the same byte
-in every frame.
+Checked on an FTDX10 on 2026-11-21 by [Eugene YO9VA](https://github.com/Eugen68),
+with the page open on a phone over Wi-Fi: 25 frames a second on the page, and
+`tools/check_frames.py --seconds 20` on the USB at the same time gave 500
+frames of 4096 bytes, 25 a second, every one ending at byte 3050, none cut
+short. Not yet checked on an FTdx101, or while transmitting.
 
 Both sockets can be plugged into the PC at once: COM for flashing and status
 text, USB for the frames. That's how I run it, so nothing has to be moved
