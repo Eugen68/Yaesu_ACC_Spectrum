@@ -86,7 +86,8 @@ Checked on an FTDX10 on 2026-11-21 by [Eugene YO9VA](https://github.com/Eugen68)
 with the page open on a phone over Wi-Fi: 25 frames a second on the page, and
 `tools/check_frames.py --seconds 20` on the USB at the same time gave 500
 frames of 4096 bytes, 25 a second, every one ending at byte 3050, none cut
-short. Not yet checked on an FTdx101, or while transmitting.
+short. Checked on my FTdx101MP on 2026-11-22 over Wi-Fi: 25 frames a second,
+none cut short, with Main and Sub on the page. Not yet checked while transmitting.
 
 Both sockets can be plugged into the PC at once: COM for flashing and status
 text, USB for the frames. That's how I run it, so nothing has to be moved
