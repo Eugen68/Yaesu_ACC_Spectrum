@@ -43,6 +43,51 @@ What it does:
   115200. It always starts `ACC pipe: version 2.0.1,` so a program can tell
   it's talking to this firmware, and which version.
 
+## Wi-Fi (version 3)
+
+Version 3 keeps the USB pipe exactly as it was, so ACC Spectrum Viewer works as
+before, and adds the scope on a web page over Wi-Fi. Any browser on the home
+network can open it: a phone, a tablet or another PC.
+
+- **First start:** the board makes its own network, `ACC-Scope-xxxx`, with no
+  password. Join it from a phone and the setup page opens (or go to
+  http://192.168.4.1/wifi). Pick the home network, type its password and save;
+  the board restarts and joins it.
+- **After that:** open http://acc-scope.local, or the address the status text
+  gives, such as `wifi 192.168.1.20`. The page shows the scope and waterfall
+  with the frequency scale, and the audio scope with its attenuators and
+  timebase, for Main and, on an FTdx101, Sub. It tells the FTDX10 from the FTdx101 the same way the library does.
+- **To change the network,** hold BOOT for 3 seconds while the board is
+  running. The setup network comes up for 10 minutes, and the board stays on
+  the saved network meanwhile. (Not at power-on: BOOT is a strapping pin, so
+  held then it puts the ESP32-S3 in download mode and this firmware never runs.)
+- **If the saved network can't be joined for 30 seconds,** after a router
+  restart say, the setup network comes up as well, so the network can be
+  changed, and the board keeps trying. It closes again once the board has
+  rejoined and nobody is on it.
+- The setup page answers only on the setup network, never on the home network.
+- **To forget the network,** send `w` on the USB. The board restarts with no
+  network saved, so the setup network comes up.
+- The status text gives the Wi-Fi state before `edges/s`: `wifi 192.168.1.20
+  rssi -67` (the signal strength in dBm, so stalls on the page can be put down
+  to the signal or not), with ` + setup ACC-Scope-xxxx` after it while the
+  setup network is up too, or `wifi connecting`, or `wifi setup ACC-Scope-xxxx`.
+
+How it works: `web.cpp` runs on its own task on core 0, so the SPI and USB work
+on core 1 never waits for it. Port 80 serves the page (`web/index.html`, built
+in by `embed_web.py`), `/status` and `/wifi`. Its small HTTP server holds up to
+eight connections at once and answers only those that have sent a whole
+request, so the spare connections phone browsers open in advance don't hold the
+others up, as they did with Arduino's `WebServer`. Port 81 is a WebSocket that sends
+each frame's first 3102 bytes as one binary message, to up to three browsers. A
+browser that can't keep up is dropped and reconnects.
+
+Checked on an FTDX10 on 2026-11-21 by [Eugene YO9VA](https://github.com/Eugen68),
+with the page open on a phone over Wi-Fi: 25 frames a second on the page, and
+`tools/check_frames.py --seconds 20` on the USB at the same time gave 500
+frames of 4096 bytes, 25 a second, every one ending at byte 3050, none cut
+short. Not yet checked on an FTdx101, or while transmitting.
+
 Both sockets can be plugged into the PC at once: COM for flashing and status
 text, USB for the frames. That's how I run it, so nothing has to be moved
 between flashing and capturing.

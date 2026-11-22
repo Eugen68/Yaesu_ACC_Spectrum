@@ -17,3 +17,4 @@ viewer/**/bin/
 viewer/**/obj/
 viewer/esptool/
 viewer/out/
+firmware/src/web_page.h

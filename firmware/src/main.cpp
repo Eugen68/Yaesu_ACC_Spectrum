@@ -1,5 +1,5 @@
-// Yaesu ACC spectrum firmware, version 2: a dumb pipe, plus edge counts for
-// checking the wiring.
+// Yaesu ACC spectrum firmware, version 3: a dumb pipe, plus edge counts for
+// checking the wiring, plus the scope on a web page over Wi-Fi (web.cpp).
 //
 // The FTdx101MP sends its scope data out of the ACC socket as SPI: CS (pin 6)
 // low for each frame, CLOCK (pin 5) at about 2 MHz, data on DATA2 (pin 4). This
@@ -18,9 +18,11 @@
 //               for the FTdx101MP: the radio changes DATA2 on the edge mode 3
 //               samples on, so mode 3 gets bits flipped.
 //   'i'         send a status text packet
+//   'w'         forget the saved Wi-Fi network and restart into Wi-Fi setup
 //
 // Status text, every 5 s and on 'i', always starts "ACC pipe:" then the
-// firmware version. "edges/s" counts rising edges in the last second on each
+// firmware version. From version 3 it also gives the Wi-Fi state before
+// "edges/s": "wifi 192.168.1.20", "wifi connecting" or "wifi setup <network>". "edges/s" counts rising edges in the last second on each
 // input, from the ESP32's pulse counter (PCNT), which listens alongside the SPI
 // slave without disturbing it. With the radio streaming, expect CS 25, CLOCK
 // about 819200 (25 x 4096 x 8) and DATA2 in the thousands. A line reading 0
@@ -40,7 +42,9 @@
 #include <driver/gpio.h>
 #include <esp_timer.h>
 
-static constexpr const char* FW_VERSION = "2.0.1";
+#include "web.h"
+
+static constexpr const char* FW_VERSION = "3.0.6";
 
 static constexpr int PIN_CLK = 10;
 static constexpr int PIN_DATA2 = 11;   // the radio's data, into the slave's MOSI
@@ -156,16 +160,19 @@ static void sendText(const char* text) {
 }
 
 static void status() {
-    char s[240];
+    char s[320];
+    char wifi[96];
+    webStatus(wifi, sizeof wifi);
     int n = snprintf(s, sizeof s,
-             "ACC pipe: version %s, SPI mode %u, frames %lu, bytes %lu, cut short %lu, not sent %lu, DATA1 %d, up %lu s, edges/s",
+             "ACC pipe: version %s, SPI mode %u, frames %lu, bytes %lu, cut short %lu, not sent %lu, DATA1 %d, up %lu s, %s, edges/s",
              FW_VERSION, spiMode, (unsigned long)frames, (unsigned long)bytesIn,
              (unsigned long)cutShort, (unsigned long)dropped,
-             digitalRead(PIN_DATA1), (unsigned long)(millis() / 1000));
+             digitalRead(PIN_DATA1), (unsigned long)(millis() / 1000), wifi);
     for (int i = 0; i < EDGE_INPUTS && n > 0 && n < (int)sizeof s; i++)
         n += snprintf(s + n, sizeof s - n, " %s %lu", edgeInputs[i].name,
                       (unsigned long)edgesPerSec[i]);
     sendText(s);
+    webSetStatusText(s);
 }
 
 static void led(uint8_t r, uint8_t g, uint8_t b) { neopixelWrite(PIN_LED, r, g, b); }
@@ -214,6 +221,7 @@ void setup() {
         if (!bufs[i]) { sendText("ACC pipe: out of DMA memory"); led(16, 0, 0); while (true) delay(1000); }
         queue(i);
     }
+    webSetup();
     status();
 }
 
@@ -230,6 +238,12 @@ static void commands() {
             ESP.restart();
         } else if (c == 'i') {
             status();
+        } else if (c == 'w') {
+            webForget();
+            sendText("ACC pipe: Wi-Fi network forgotten, restarting");
+            Serial.flush();
+            delay(200);
+            ESP.restart();
         }
     }
 }
@@ -243,6 +257,7 @@ void loop() {
         if (flags) cutShort++;
         if (n) {
             sendPacket('F', flags, bufs[i], (uint16_t)n);
+            webPublishFrame(bufs[i], n);
             frames++;
             bytesIn += n;
             lastFrameMs = millis();
