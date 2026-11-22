@@ -180,6 +180,20 @@ FFT att 2 0x40, oscilloscope att 1 0x08 and time t3 0x03, against 0x00.
 In Cursor and Fix the left edge is right: on 2026-11-21 the viewer's frequency
 scale matched the radio's own screen in both.
 
+**No S-meter and no squelch state in the frame.** Checked on 2026-11-22 with
+four captures (captures/ftdx10/ftdx10-meter-*.bin). Between S0 on a quiet band
+and a strong, steady AM station, the only bytes from 2850 to 3049 that differ
+are the tuning and a few in 2924-2967 that stay the same in all 125 frames of
+each capture, so they follow the band or mode, not the signal. Between the
+squelch closed and open on the same FM frequency, not one byte from 2850 to
+3049 differs. In none of the 17 earlier captures does a byte in 2850-3049 move
+the way a meter would. For the S-meter, CAT's `SM0;` remains the way.
+
+Byte 2937 is the one byte there that changes frame to frame: 0 or 0x38, in
+runs of two frames to nearly two seconds, and only in the five audio scope
+captures. It was 0 in all four meter captures, so it isn't the squelch. What
+it is isn't known.
+
 ## Not known
 
 - What the frames do while the radio transmits. Nothing here transmits.

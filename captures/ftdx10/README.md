@@ -33,4 +33,14 @@ each with one of the radio's audio scope settings changed from the first:
 | ftdx10-audio-oscatt1.bin | Oscilloscope att 1 | 0x08 |
 | ftdx10-audio-time3.bin | Time 30 ms (t3) | 0x03 |
 
+The meter captures, taken on 2026-11-22 to look for the S-meter and the
+squelch in the frame. Neither is there (see docs/protocol.md):
+
+| File | Set on the radio |
+|---|---|
+| ftdx10-meter-s0.bin | 7.137.660, a quiet band, S-meter on S0 |
+| ftdx10-meter-strong.bin | 854.000, a strong, steady AM broadcast station |
+| ftdx10-meter-sqlclosed.bin | 29.600.000 FM, no signal, squelch closed (no noise from the speaker) |
+| ftdx10-meter-sqlopen.bin | The same with the squelch open (noise from the speaker) |
+
 The layout they show is in [docs/protocol.md](../../docs/protocol.md#the-ftdx10).
