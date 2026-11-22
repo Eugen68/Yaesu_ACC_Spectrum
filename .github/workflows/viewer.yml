@@ -18,7 +18,7 @@ permissions:
 
 env:
   ESPTOOL_VERSION: v5.6.0
-  FIRMWARE_TAG: firmware-v2.0.1
+  FIRMWARE_TAG: firmware-v3.0.7
 
 jobs:
   build:

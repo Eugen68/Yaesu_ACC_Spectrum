@@ -143,7 +143,7 @@ dotnet run --project viewer\src\AccFirmwareFlasher
 
 The firmware file comes from `firmware\release\*-merged.bin`. Build it with
 PlatformIO (see [firmware/](../firmware)), or download it from the
-[firmware release](https://github.com/mm5agm/Yaesu_ACC_Spectrum/releases/tag/firmware-v2.0.1)
+[firmware release](https://github.com/mm5agm/Yaesu_ACC_Spectrum/releases/tag/firmware-v3.0.7)
 into that folder. Without it, the flasher still works with **Browse...**.
 
 The release zip is made by [.github/workflows/viewer.yml](../.github/workflows/viewer.yml),
