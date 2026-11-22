@@ -6,15 +6,20 @@
 // browsers. Everything here runs on its own task on core 0; the SPI and USB
 // work in main.cpp's loop() never waits for it.
 //
-// The WebSocket server is written here rather than taken from a library: it
-// only ever sends, so the handshake and a 4-byte header are all it needs.
+// The HTTP and WebSocket servers are written here rather than taken from a
+// library. Arduino's WebServer serves one connection at a time and waits up
+// to 5 s for each to send its request, and phone browsers open spare
+// connections in advance that send nothing, so a phone waited 5 s per spare
+// connection, or gave up. Here every connection gets a slot, only those that
+// have sent a whole request are answered, and every answer closes its
+// connection. The WebSocket only ever sends, so its handshake and a 4-byte
+// header are all it needs.
 
 #include "web.h"
 
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
-#include <WebServer.h>
 #include <WiFi.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/sha1.h>
@@ -30,7 +35,7 @@ static constexpr uint32_t BOOT_HOLD_MS = 3000;   // BOOT held this long opens th
 static constexpr uint32_t BUTTON_SETUP_MS = 600000;   // and keeps it open this long
 static const char* HOSTNAME = "acc-scope";
 
-static WebServer http(80);
+static WiFiServer httpServer(80);
 static WiFiServer wsServer(81);
 static DNSServer dns;
 static WiFiClient wsClients[MAX_CLIENTS];
@@ -70,12 +75,15 @@ void webSetStatusText(const char* text) {
 }
 
 void webStatus(char* out, size_t size) {
-    if (WiFi.status() == WL_CONNECTED)
-        snprintf(out, size, "wifi %s", WiFi.localIP().toString().c_str());
-    else if (apOn)
+    if (WiFi.status() == WL_CONNECTED) {
+        // The signal strength, so stalls on the page can be put down to the signal or not.
+        int n = snprintf(out, size, "wifi %s rssi %d", WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
+        if (apOn && n > 0 && n < (int)size) snprintf(out + n, size - n, " + setup %s", apName.c_str());
+    } else if (apOn) {
         snprintf(out, size, "wifi setup %s", apName.c_str());
-    else
+    } else {
         snprintf(out, size, "wifi connecting");
+    }
 }
 
 void webForget() {
@@ -108,8 +116,120 @@ static void stopSetupNetwork() {
 
 // True when the request came in on the setup network rather than the home
 // network: only those may see or change the Wi-Fi settings.
-static bool fromSetupNetwork() {
-    return apOn && http.client().localIP() == WiFi.softAPIP();
+static bool fromSetupNetwork(WiFiClient& c) {
+    return apOn && c.localIP() == WiFi.softAPIP();
+}
+
+// --- HTTP ----------------------------------------------------------------------
+
+static constexpr int SLOTS = 8;                    // connections waiting to send a request
+static constexpr uint32_t REQUEST_WAIT_MS = 10000; // one that hasn't sent a whole request by then is closed
+static constexpr size_t MAX_REQUEST = 3072;
+static constexpr uint32_t SEND_GIVE_UP_MS = 3000;
+
+struct Slot {
+    WiFiClient c;
+    String in;
+    uint32_t since = 0;
+    bool ws = false;   // came in on port 81
+    bool used = false;
+};
+static Slot slots[SLOTS];
+
+static void freeSlot(Slot& s) {
+    s.c.stop();
+    s.in = "";
+    s.used = false;
+}
+
+static void acceptOn(WiFiServer& server, bool ws) {
+    for (;;) {
+        WiFiClient c = server.available();
+        if (!c) return;
+        // A free slot, or else the oldest that has sent nothing yet (a
+        // browser's spare connection), or else the oldest.
+        Slot* use = nullptr;
+        for (auto& s : slots)
+            if (!s.used) { use = &s; break; }
+        if (!use) {
+            for (int pass = 0; pass < 2 && !use; pass++)
+                for (auto& s : slots)
+                    if ((pass == 1 || s.in.isEmpty()) && (!use || (int32_t)(s.since - use->since) < 0)) use = &s;
+            freeSlot(*use);
+        }
+        use->c = c;
+        use->in = "";
+        use->since = millis();
+        use->ws = ws;
+        use->used = true;
+    }
+}
+
+static bool sendAll(WiFiClient& c, const char* p, size_t n) {
+    uint32_t start = millis();
+    while (n) {
+        size_t w = c.write((const uint8_t*)p, n);
+        if (w == 0) {
+            if (!c.connected() || millis() - start > SEND_GIVE_UP_MS) return false;
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
+        p += w;
+        n -= w;
+    }
+    return true;
+}
+
+static void respond(WiFiClient& c, int code, const char* type, const char* body, size_t len,
+                    const char* extraHeaders = "") {
+    const char* reason = code == 200 ? "OK" : code == 302 ? "Found" : code == 400 ? "Bad Request"
+                       : code == 413 ? "Payload Too Large" : "Not Found";
+    char head[384];
+    int h = snprintf(head, sizeof head,
+                     "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
+                     code, reason, type, (unsigned)len, extraHeaders);
+    if (h > 0 && sendAll(c, head, (size_t)h) && len) sendAll(c, body, len);
+}
+
+static void respondText(WiFiClient& c, int code, const char* type, const String& body) {
+    respond(c, code, type, body.c_str(), body.length());
+}
+
+static void redirect(WiFiClient& c, const char* to) {
+    char extra[160];
+    snprintf(extra, sizeof extra, "Location: %s\r\n", to);
+    respond(c, 302, "text/plain", "", 0, extra);
+}
+
+static String urlDecode(const String& s) {
+    String o;
+    for (size_t i = 0; i < s.length(); i++) {
+        char ch = s[i];
+        if (ch == '+') {
+            o += ' ';
+        } else if (ch == '%' && i + 2 < s.length() && isxdigit((unsigned char)s[i + 1]) &&
+                   isxdigit((unsigned char)s[i + 2])) {
+            char hex[3] = {s[i + 1], s[i + 2], 0};
+            o += (char)strtol(hex, nullptr, 16);
+            i += 2;
+        } else {
+            o += ch;
+        }
+    }
+    return o;
+}
+
+// One field of an application/x-www-form-urlencoded body.
+static String formArg(const String& body, const char* name) {
+    String key = String(name) + "=";
+    int i = 0;
+    while (i <= (int)body.length()) {
+        int amp = body.indexOf('&', i);
+        if (amp < 0) amp = body.length();
+        if (body.startsWith(key, i)) return urlDecode(body.substring(i + key.length(), amp));
+        i = amp + 1;
+    }
+    return "";
 }
 
 static String htmlEscape(const String& s) {
@@ -131,9 +251,9 @@ static const char WIFI_PAGE_HEAD[] =
     "border-radius:6px;border:1px solid #555;background:#222;color:#eee}button{background:#2d6cdf;border:0;cursor:pointer}"
     "small{color:#aaa}</style></head><body><main><h2>ACC Scope Wi-Fi</h2>";
 
-static void handleWifiForm() {
-    if (!fromSetupNetwork()) {
-        http.send(404, "text/plain", "Not found");
+static void handleWifiForm(WiFiClient& c) {
+    if (!fromSetupNetwork(c)) {
+        respondText(c, 404, "text/plain", "Not found");
         return;
     }
     String page = WIFI_PAGE_HEAD;
@@ -154,41 +274,41 @@ static void handleWifiForm() {
             "<button type='submit'>Save and restart</button></form>"
             "<p><small>Afterwards the scope is at http://acc-scope.local or at the address the board's status shows.</small></p>"
             "</main></body></html>";
-    http.send(200, "text/html", page);
+    respondText(c, 200, "text/html", page);
 }
 
-static void handleWifiSave() {
-    if (!fromSetupNetwork()) {
-        http.send(404, "text/plain", "Not found");
+static void handleWifiSave(WiFiClient& c, const String& body) {
+    if (!fromSetupNetwork(c)) {
+        respondText(c, 404, "text/plain", "Not found");
         return;
     }
-    String ssid = http.arg("other");
+    String ssid = formArg(body, "other");
     ssid.trim();
-    if (ssid.isEmpty()) ssid = http.arg("ssid");
+    if (ssid.isEmpty()) ssid = formArg(body, "ssid");
     if (ssid.isEmpty()) {
-        http.send(400, "text/plain", "No network chosen.");
+        respondText(c, 400, "text/plain", "No network chosen.");
         return;
     }
     wifiPrefs.putString("ssid", ssid);
-    wifiPrefs.putString("pass", http.arg("pass"));
+    wifiPrefs.putString("pass", formArg(body, "pass"));
     String page = WIFI_PAGE_HEAD;
     page += "<p>Saved <b>" + htmlEscape(ssid) + "</b>. The board is restarting and joining it.</p>"
             "<p>Then open <b>http://acc-scope.local</b>, or the address in the viewer's status.</p></main></body></html>";
-    http.send(200, "text/html", page);
+    respondText(c, 200, "text/html", page);
+    c.flush();
     delay(500);
     ESP.restart();
 }
 
-static void handleRoot() {
-    if (fromSetupNetwork() && WiFi.status() != WL_CONNECTED) {
-        http.sendHeader("Location", "/wifi");
-        http.send(302, "text/plain", "");
+static void handleRoot(WiFiClient& c) {
+    if (fromSetupNetwork(c) && WiFi.status() != WL_CONNECTED) {
+        redirect(c, "/wifi");
         return;
     }
-    http.send(200, "text/html", WEB_PAGE);
+    respond(c, 200, "text/html; charset=utf-8", WEB_PAGE, sizeof WEB_PAGE - 1);
 }
 
-static void handleStatus() {
+static void handleStatus(WiFiClient& c) {
     char text[sizeof statusText];
     if (xSemaphoreTake(statusLock, pdMS_TO_TICKS(50)) == pdTRUE) {
         strlcpy(text, statusText, sizeof text);
@@ -196,17 +316,12 @@ static void handleStatus() {
     } else {
         strlcpy(text, "busy", sizeof text);
     }
-    http.sendHeader("Cache-Control", "no-store");
-    http.send(200, "text/plain", text);
+    respond(c, 200, "text/plain", text, strlen(text), "Cache-Control: no-store\r\n");
 }
 
-static void handleNotFound() {
-    if (fromSetupNetwork()) {   // send every address to the setup page
-        http.sendHeader("Location", "http://192.168.4.1/wifi");
-        http.send(302, "text/plain", "");
-    } else {
-        http.send(404, "text/plain", "Not found");
-    }
+static void handleNotFound(WiFiClient& c) {
+    if (fromSetupNetwork(c)) redirect(c, "http://192.168.4.1/wifi");   // every address leads to the setup page
+    else respondText(c, 404, "text/plain", "Not found");
 }
 
 // --- WebSocket ---------------------------------------------------------------
@@ -219,20 +334,19 @@ static bool sha1(const uint8_t* in, size_t len, uint8_t out[20]) {
 #endif
 }
 
-static bool wsHandshake(WiFiClient& c) {
-    c.setTimeout(2);   // seconds
-    String key;
-    for (int lines = 0; lines < 40; lines++) {
-        String line = c.readStringUntil('\n');
-        line.trim();
-        if (line.isEmpty()) break;
-        String lower = line;
-        lower.toLowerCase();
-        if (lower.startsWith("sec-websocket-key:")) {
-            key = line.substring(18);
-            key.trim();
-        }
-    }
+// The value of one request header, or "" without it. head is the request's
+// header block, lower its lower-case copy.
+static String header(const String& head, const String& lower, const char* name) {
+    String key = String("\n") + name + ":";
+    int at = lower.indexOf(key);
+    if (at < 0) return "";
+    int from = at + key.length(), to = head.indexOf('\r', from);
+    String v = head.substring(from, to < 0 ? head.length() : to);
+    v.trim();
+    return v;
+}
+
+static bool wsHandshake(WiFiClient& c, const String& key) {
     if (key.isEmpty()) return false;
     String src = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     uint8_t digest[20];
@@ -247,17 +361,76 @@ static bool wsHandshake(WiFiClient& c) {
     return true;
 }
 
-static void wsAccept() {
-    WiFiClient c = wsServer.available();
-    if (!c) return;
+static void wsTake(WiFiClient& c, const String& key) {
     for (auto& slot : wsClients) {
         if (!slot.connected()) {
-            if (wsHandshake(c)) slot = c;
+            if (wsHandshake(c, key)) slot = c;
             else c.stop();
             return;
         }
     }
     c.stop();   // full
+}
+
+// --- Serving the slots ---------------------------------------------------------
+
+static void serveSlot(Slot& s) {
+    char buf[256];
+    while (s.c.available() && s.in.length() < MAX_REQUEST) {
+        size_t room = MAX_REQUEST - s.in.length();
+        int n = s.c.read((uint8_t*)buf, room < sizeof buf ? room : sizeof buf);
+        if (n <= 0) break;
+        for (int k = 0; k < n; k++) s.in += buf[k];
+    }
+    int end = s.in.indexOf("\r\n\r\n");
+    if (end < 0) {
+        if (s.in.length() >= MAX_REQUEST) {
+            respondText(s.c, 413, "text/plain", "Request too large");
+            freeSlot(s);
+        } else if (!s.c.connected() || millis() - s.since > REQUEST_WAIT_MS) {
+            freeSlot(s);
+        }
+        return;
+    }
+    String head = s.in.substring(0, end), lower = head;
+    lower.toLowerCase();
+    size_t want = (size_t)header(head, lower, "content-length").toInt();
+    String body = s.in.substring(end + 4);
+    if (body.length() < want) {   // the rest of a POST is still coming
+        if (s.in.length() >= MAX_REQUEST) {
+            respondText(s.c, 413, "text/plain", "Request too large");
+            freeSlot(s);
+        } else if (!s.c.connected() || millis() - s.since > REQUEST_WAIT_MS) {
+            freeSlot(s);
+        }
+        return;
+    }
+    if (s.ws) {
+        wsTake(s.c, header(head, lower, "sec-websocket-key"));   // the WebSocket keeps the connection
+        s.c = WiFiClient();
+        s.in = "";
+        s.used = false;
+        return;
+    }
+    int sp1 = head.indexOf(' '), sp2 = head.indexOf(' ', sp1 + 1);
+    String method = head.substring(0, sp1 < 0 ? 0 : sp1);
+    String path = sp1 < 0 ? String("") : head.substring(sp1 + 1, sp2 < 0 ? head.length() : sp2);
+    int q = path.indexOf('?');
+    if (q >= 0) path = path.substring(0, q);
+    bool get = method == "GET" || method == "HEAD";
+    if (path == "/" && get) handleRoot(s.c);
+    else if (path == "/status" && get) handleStatus(s.c);
+    else if (path == "/wifi" && get) handleWifiForm(s.c);
+    else if (path == "/wifi" && method == "POST") handleWifiSave(s.c, body.substring(0, want));
+    else handleNotFound(s.c);
+    freeSlot(s);
+}
+
+static void serveHttp() {
+    acceptOn(httpServer, false);
+    acceptOn(wsServer, true);
+    for (auto& s : slots)
+        if (s.used) serveSlot(s);
 }
 
 static void wsSendLatest(uint32_t& lastSeq) {
@@ -316,7 +489,7 @@ static void webTask(void*) {
     bool mdnsOn = false;
     for (;;) {
         if (apOn) dns.processNextRequest();
-        http.handleClient();
+        serveHttp();
         bool connected = WiFi.status() == WL_CONNECTED;
         if (connected) lastConnected = millis();
         if (connected && !mdnsOn) {
@@ -334,7 +507,6 @@ static void webTask(void*) {
             (setupWhy == SetupWhy::Fallback ||
              (setupWhy == SetupWhy::Button && millis() - setupSince > BUTTON_SETUP_MS)))
             stopSetupNetwork();
-        wsAccept();
         wsTidy();
         if (clientCount) wsSendLatest(lastSeq);
         vTaskDelay(pdMS_TO_TICKS(2));
@@ -366,12 +538,7 @@ void webSetup() {
         WiFi.begin(savedSsid.c_str(), savedPass.c_str());
     }
 
-    http.on("/", HTTP_GET, handleRoot);
-    http.on("/status", HTTP_GET, handleStatus);
-    http.on("/wifi", HTTP_GET, handleWifiForm);
-    http.on("/wifi", HTTP_POST, handleWifiSave);
-    http.onNotFound(handleNotFound);
-    http.begin();
+    httpServer.begin();
     wsServer.begin();
 
     xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);

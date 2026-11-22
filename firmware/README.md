@@ -68,12 +68,17 @@ network can open it: a phone, a tablet or another PC.
 - The setup page answers only on the setup network, never on the home network.
 - **To forget the network,** send `w` on the USB. The board restarts with no
   network saved, so the setup network comes up.
-- The status text gives the Wi-Fi state before `edges/s`: `wifi 192.168.1.20`,
-  `wifi connecting` or `wifi setup ACC-Scope-xxxx`.
+- The status text gives the Wi-Fi state before `edges/s`: `wifi 192.168.1.20
+  rssi -67` (the signal strength in dBm, so stalls on the page can be put down
+  to the signal or not), with ` + setup ACC-Scope-xxxx` after it while the
+  setup network is up too, or `wifi connecting`, or `wifi setup ACC-Scope-xxxx`.
 
 How it works: `web.cpp` runs on its own task on core 0, so the SPI and USB work
 on core 1 never waits for it. Port 80 serves the page (`web/index.html`, built
-in by `embed_web.py`), `/status` and `/wifi`. Port 81 is a WebSocket that sends
+in by `embed_web.py`), `/status` and `/wifi`. Its small HTTP server holds up to
+eight connections at once and answers only those that have sent a whole
+request, so the spare connections phone browsers open in advance don't hold the
+others up, as they did with Arduino's `WebServer`. Port 81 is a WebSocket that sends
 each frame's first 3102 bytes as one binary message, to up to three browsers. A
 browser that can't keep up is dropped and reconnects.
 

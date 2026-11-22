@@ -44,7 +44,7 @@
 
 #include "web.h"
 
-static constexpr const char* FW_VERSION = "3.0.2";
+static constexpr const char* FW_VERSION = "3.0.3";
 
 static constexpr int PIN_CLK = 10;
 static constexpr int PIN_DATA2 = 11;   // the radio's data, into the slave's MOSI
@@ -161,7 +161,7 @@ static void sendText(const char* text) {
 
 static void status() {
     char s[320];
-    char wifi[64];
+    char wifi[96];
     webStatus(wifi, sizeof wifi);
     int n = snprintf(s, sizeof s,
              "ACC pipe: version %s, SPI mode %u, frames %lu, bytes %lu, cut short %lu, not sent %lu, DATA1 %d, up %lu s, %s, edges/s",
