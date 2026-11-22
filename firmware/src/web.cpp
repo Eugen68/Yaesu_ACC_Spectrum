@@ -259,6 +259,15 @@ static void handleWifiForm(WiFiClient& c) {
     String page = WIFI_PAGE_HEAD;
     page += "<form method='post' action='/wifi'><label>Network</label><select name='ssid'>";
     int n = WiFi.scanNetworks();
+    // While the station side is still trying to join the saved network, the
+    // radio refuses to scan, so the list came back empty. Stop trying, scan,
+    // then go back to trying.
+    if (n < 0 && !savedSsid.isEmpty() && WiFi.status() != WL_CONNECTED) {
+        WiFi.disconnect();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        n = WiFi.scanNetworks();
+        WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+    }
     bool any = false;
     for (int i = 0; i < n; i++) {
         String s = WiFi.SSID(i);
@@ -268,7 +277,8 @@ static void handleWifiForm(WiFiClient& c) {
                 htmlEscape(s) + "</option>";
     }
     WiFi.scanDelete();
-    if (!any) page += "<option value=''>No networks found</option>";
+    if (!any) page += n < 0 ? "<option value=''>Couldn't look for networks: type the name below</option>"
+                            : "<option value=''>No networks found: type the name below</option>";
     page += "</select><label>Or type its name</label><input name='other' placeholder='Network name' autocapitalize='off'>"
             "<label>Password</label><input name='pass' type='password' autocomplete='off'>"
             "<button type='submit'>Save and restart</button></form>"
