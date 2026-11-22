@@ -315,7 +315,8 @@ static void handleRoot(WiFiClient& c) {
         redirect(c, "/wifi");
         return;
     }
-    respond(c, 200, "text/html; charset=utf-8", WEB_PAGE, sizeof WEB_PAGE - 1);
+    // no-cache: after a firmware update the browser fetches the new page, not its old copy.
+    respond(c, 200, "text/html; charset=utf-8", WEB_PAGE, sizeof WEB_PAGE - 1, "Cache-Control: no-cache\r\n");
 }
 
 static void handleStatus(WiFiClient& c) {
