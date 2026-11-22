@@ -180,6 +180,9 @@ static bool sendAll(WiFiClient& c, const char* p, size_t n) {
     return true;
 }
 
+// True while answering a HEAD request: the headers go out, the body doesn't.
+static bool headOnly = false;
+
 static void respond(WiFiClient& c, int code, const char* type, const char* body, size_t len,
                     const char* extraHeaders = "") {
     const char* reason = code == 200 ? "OK" : code == 302 ? "Found" : code == 400 ? "Bad Request"
@@ -188,7 +191,7 @@ static void respond(WiFiClient& c, int code, const char* type, const char* body,
     int h = snprintf(head, sizeof head,
                      "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n%sConnection: close\r\n\r\n",
                      code, reason, type, (unsigned)len, extraHeaders);
-    if (h > 0 && sendAll(c, head, (size_t)h) && len) sendAll(c, body, len);
+    if (h > 0 && sendAll(c, head, (size_t)h) && len && !headOnly) sendAll(c, body, len);
 }
 
 static void respondText(WiFiClient& c, int code, const char* type, const String& body) {
@@ -429,11 +432,13 @@ static void serveSlot(Slot& s) {
     int q = path.indexOf('?');
     if (q >= 0) path = path.substring(0, q);
     bool get = method == "GET" || method == "HEAD";
+    headOnly = method == "HEAD";
     if (path == "/" && get) handleRoot(s.c);
     else if (path == "/status" && get) handleStatus(s.c);
     else if (path == "/wifi" && get) handleWifiForm(s.c);
     else if (path == "/wifi" && method == "POST") handleWifiSave(s.c, body.substring(0, want));
     else handleNotFound(s.c);
+    headOnly = false;
     freeSlot(s);
 }
 
