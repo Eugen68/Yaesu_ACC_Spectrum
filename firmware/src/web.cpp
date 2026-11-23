@@ -24,6 +24,7 @@
 #include <mbedtls/base64.h>
 #include <mbedtls/sha1.h>
 #include <mbedtls/version.h>
+#include <lwip/sockets.h>
 
 #include "web_page.h"
 
@@ -41,6 +42,19 @@ static WiFiServer httpServer(80);
 static WiFiServer wsServer(81);
 static DNSServer dns;
 static WiFiClient wsClients[MAX_CLIENTS];
+
+// Each client's frame still on its way out. Sends never wait: a client on a
+// weak signal (the 7" display at -86 dBm) used to hold every write until its
+// link caught up, so the PC and browsers stalled with it, up to 400 ms. Now a
+// slow client finishes the frame it has, skips the ones that came meanwhile,
+// and the others carry on. A client that takes nothing for WS_STALL_MS is dropped.
+struct WsOut {
+    uint8_t buf[4 + SEND_BYTES];
+    size_t off = 0, len = 0;
+    uint32_t lastProgress = 0;
+};
+static WsOut wsOut[MAX_CLIENTS];
+static constexpr uint32_t WS_STALL_MS = 5000;
 static Preferences wifiPrefs;
 static String savedSsid, savedPass, apName;
 static volatile bool apOn = false;
@@ -378,10 +392,15 @@ static bool wsHandshake(WiFiClient& c, const String& key) {
 }
 
 static void wsTake(WiFiClient& c, const String& key) {
-    for (auto& slot : wsClients) {
-        if (!slot.connected()) {
-            if (wsHandshake(c, key)) slot = c;
-            else c.stop();
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (!wsClients[i].connected()) {
+            if (wsHandshake(c, key)) {
+                wsClients[i] = c;
+                wsOut[i].off = wsOut[i].len = 0;
+                wsOut[i].lastProgress = millis();
+            } else {
+                c.stop();
+            }
             return;
         }
     }
@@ -463,9 +482,37 @@ static void wsSendLatest(uint32_t& lastSeq) {
     sendBuf[1] = 126;    // 16-bit length follows
     sendBuf[2] = (uint8_t)(n >> 8);
     sendBuf[3] = (uint8_t)n;
-    for (auto& c : wsClients) {
-        if (!c.connected()) continue;
-        if (c.write(sendBuf, 4 + n) != 4 + n) c.stop();   // too slow or gone: drop it
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        WsOut& o = wsOut[i];
+        if (!wsClients[i].connected() || o.off < o.len) continue;   // still sending its last one: skip this
+        memcpy(o.buf, sendBuf, 4 + n);
+        o.off = 0;
+        o.len = 4 + n;
+    }
+}
+
+// Sends what each client's socket will take now, without waiting.
+static void wsFlush() {
+    uint32_t now = millis();
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        WiFiClient& c = wsClients[i];
+        WsOut& o = wsOut[i];
+        if (!c.connected()) {
+            o.off = o.len = 0;
+            continue;
+        }
+        if (o.off >= o.len) {
+            o.lastProgress = now;
+            continue;
+        }
+        int r = send(c.fd(), o.buf + o.off, o.len - o.off, MSG_DONTWAIT);
+        if (r > 0) {
+            o.off += r;
+            o.lastProgress = now;
+        } else if ((r < 0 && errno != EAGAIN && errno != EWOULDBLOCK) || now - o.lastProgress > WS_STALL_MS) {
+            c.stop();   // gone, or taking nothing at all: drop it
+            o.off = o.len = 0;
+        }
     }
 }
 
@@ -559,7 +606,10 @@ static void webTask(void*) {
             stopSetupNetwork();
         quietRetries(connected);
         wsTidy();
-        if (clientCount) wsSendLatest(lastSeq);
+        if (clientCount) {
+            wsSendLatest(lastSeq);
+            wsFlush();
+        }
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 }
