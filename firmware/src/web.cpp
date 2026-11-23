@@ -31,6 +31,8 @@ static constexpr size_t SEND_BYTES = 3102;       // the FTdx101's data; the FTDX
 static constexpr int MAX_CLIENTS = 3;
 static constexpr int PIN_BOOT = 0;               // the BOOT button
 static constexpr uint32_t CONNECT_GIVE_UP_MS = 30000;
+static constexpr uint32_t GUEST_RETRY_MS = 120000;   // with someone on the setup network, try the saved one this often
+static constexpr uint32_t GUEST_TRY_MS = 20000;      // for this long each time
 static constexpr uint32_t BOOT_HOLD_MS = 3000;   // BOOT held this long opens the setup network
 static constexpr uint32_t BUTTON_SETUP_MS = 600000;   // and keeps it open this long
 static const char* HOSTNAME = "acc-scope";
@@ -499,6 +501,38 @@ static bool bootHeld() {
     return true;
 }
 
+// Trying to join the saved network scans every channel, and the setup network
+// goes quiet while the radio is away: a second or two each time. With the
+// Arduino core retrying over and over, a display or browser on the setup
+// network saw the scope stop every few seconds. So while anyone is on the
+// setup network and the saved network can't be joined, stop the constant
+// retries and try once every two minutes instead.
+static void quietRetries(bool connected) {
+    static bool quiet = false;
+    static uint32_t tryStart = 0, lastTry = 0;
+    bool guests = apOn && WiFi.softAPgetStationNum() > 0;
+    if (!connected && guests && !savedSsid.isEmpty()) {
+        if (!quiet) {
+            WiFi.setAutoReconnect(false);
+            WiFi.disconnect();
+            quiet = true;
+            tryStart = 0;
+            lastTry = millis();
+        } else if (tryStart && millis() - tryStart > GUEST_TRY_MS) {
+            WiFi.disconnect();
+            tryStart = 0;
+            lastTry = millis();
+        } else if (!tryStart && millis() - lastTry > GUEST_RETRY_MS) {
+            WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+            tryStart = millis() | 1;
+        }
+    } else if (quiet) {
+        quiet = false;
+        WiFi.setAutoReconnect(true);
+        if (!connected && !savedSsid.isEmpty()) WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+    }
+}
+
 static void webTask(void*) {
     uint32_t lastSeq = 0;
     uint32_t lastConnected = millis();
@@ -523,6 +557,7 @@ static void webTask(void*) {
             (setupWhy == SetupWhy::Fallback ||
              (setupWhy == SetupWhy::Button && millis() - setupSince > BUTTON_SETUP_MS)))
             stopSetupNetwork();
+        quietRetries(connected);
         wsTidy();
         if (clientCount) wsSendLatest(lastSeq);
         vTaskDelay(pdMS_TO_TICKS(2));
