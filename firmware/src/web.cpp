@@ -54,6 +54,7 @@ struct WsOut {
     uint32_t lastProgress = 0;
 };
 static WsOut wsOut[MAX_CLIENTS];
+static uint32_t wsSince[MAX_CLIENTS];   // when each client connected
 static constexpr uint32_t WS_STALL_MS = 5000;
 static Preferences wifiPrefs;
 static String savedSsid, savedPass, apName;
@@ -391,20 +392,41 @@ static bool wsHandshake(WiFiClient& c, const String& key) {
     return true;
 }
 
+// Asks TCP to check an idle connection is still there: a client that went
+// away without closing (the display reset, a laptop lid shut) is otherwise
+// "connected" for ever while there are no frames to send, as with the radio off.
+static void wsKeepAlive(WiFiClient& c) {
+    int fd = c.fd();
+    if (fd < 0) return;
+    int on = 1, idle = 5, intvl = 2, cnt = 3;   // gone within about 11 s
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof on);
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof idle);
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof intvl);
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof cnt);
+}
+
+// A free place, or else the longest-connected client's. Turning the newcomer
+// away instead locked the 7" display out on 2026-11-24: three connections left
+// by earlier sessions held every place, and with the radio off nothing was
+// sent that would have shown they were gone.
 static void wsTake(WiFiClient& c, const String& key) {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (!wsClients[i].connected()) {
-            if (wsHandshake(c, key)) {
-                wsClients[i] = c;
-                wsOut[i].off = wsOut[i].len = 0;
-                wsOut[i].lastProgress = millis();
-            } else {
-                c.stop();
-            }
-            return;
-        }
+    int use = -1;
+    for (int i = 0; i < MAX_CLIENTS && use < 0; i++)
+        if (!wsClients[i].connected()) use = i;
+    if (use < 0) {
+        use = 0;
+        for (int i = 1; i < MAX_CLIENTS; i++)
+            if ((int32_t)(wsSince[i] - wsSince[use]) < 0) use = i;
+        wsClients[use].stop();
     }
-    c.stop();   // full
+    if (!wsHandshake(c, key)) {
+        c.stop();
+        return;
+    }
+    wsKeepAlive(c);
+    wsClients[use] = c;
+    wsOut[use].off = wsOut[use].len = 0;
+    wsOut[use].lastProgress = wsSince[use] = millis();
 }
 
 // --- Serving the slots ---------------------------------------------------------
