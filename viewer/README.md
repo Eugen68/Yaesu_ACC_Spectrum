@@ -74,6 +74,11 @@ everything it knows about the board and the frames comes from there.
 `AccFirmwareFlasher.exe`, beside the viewer in the zip, writes the firmware that
 comes with it, or a `-merged.bin` you choose, using Espressif's esptool.
 
+It keeps the board's settings: its Wi-Fi network and SPI mode. A merged file
+also covers the part of the flash where the board stores them, so the flasher
+reads the partition table inside the file and leaves that part out. After an
+update the board goes straight back on your Wi-Fi.
+
 ![The flasher, listing the board's COM socket on COM5 and the bundled firmware 2.0.1.](../docs/images/viewer-flash.png)
 
 ## Flashing safely

@@ -133,6 +133,15 @@ public class EspToolTests
                              @"C:\f\yaesu-acc-firmware-2.0.1-merged.bin" }, args);
     }
 
+    [Fact]
+    public void Writes_several_pieces_each_at_its_address()
+    {
+        var args = EspTool.WriteFlashArguments("COM5", new[] { (0, @"C:\t\part-0x0.bin"), (0x10000, @"C:\t\part-0x10000.bin") });
+
+        Assert.Equal(new[] { "--chip", "esp32s3", "--port", "COM5", "--baud", "460800", "write-flash",
+                             "0x0", @"C:\t\part-0x0.bin", "0x10000", @"C:\t\part-0x10000.bin" }, args);
+    }
+
     [Theory]
     [InlineData("Writing at 0x00010000 [===>        ]  35.2% 65536/185344 bytes...", 35.2)]
     [InlineData("Writing at 0x0002d4a0 (100 %)", 100)]
@@ -144,6 +153,96 @@ public class EspToolTests
     [InlineData("Chip type: ESP32-S3 (QFN56) (revision v0.2)")]
     [InlineData("Wrote 1234 bytes at 0x00000000 in 1.2 seconds (500 %)")]
     public void Other_lines_have_no_progress(string line) => Assert.Null(EspTool.ProgressIn(line));
+}
+
+public class MergedImageTests
+{
+    // A merged file laid out like the board's: bootloader at 0, the partition
+    // table at 0x8000, NVS at 0x9000 (0x5000), otadata at 0xE000, app at 0x10000.
+    private static byte[] Image(int length = 0x20000)
+    {
+        var b = new byte[length];
+        Array.Fill(b, (byte)0xFF);
+        int at = MergedImage.TableOffset;
+        void Entry(byte type, byte subtype, int offset, int size, string label)
+        {
+            b[at] = 0xAA; b[at + 1] = 0x50; b[at + 2] = type; b[at + 3] = subtype;
+            BitConverter.GetBytes(offset).CopyTo(b, at + 4);
+            BitConverter.GetBytes(size).CopyTo(b, at + 8);
+            System.Text.Encoding.ASCII.GetBytes(label).CopyTo(b, at + 12);
+            at += 32;
+        }
+        Entry(1, 2, 0x9000, 0x5000, "nvs");
+        Entry(1, 0, 0xE000, 0x2000, "otadata");
+        Entry(0, 0x10, 0x10000, 0x640000, "app0");
+        Entry(1, 0x82, 0xC90000, 0x360000, "spiffs");
+        b[at] = 0xEB; b[at + 1] = 0xEB;
+        return b;
+    }
+
+    [Fact]
+    public void Leaves_out_the_nvs_partition()
+    {
+        var pieces = MergedImage.Pieces(Image());
+
+        Assert.Equal(new[] { new MergedImage.Piece(0, 0x9000), new MergedImage.Piece(0xE000, 0x12000) }, pieces);
+    }
+
+    [Fact]
+    public void A_file_without_a_partition_table_is_one_piece()
+    {
+        var b = new byte[0x20000];
+        Array.Fill(b, (byte)0xFF);
+
+        Assert.Equal(new[] { new MergedImage.Piece(0, 0x20000) }, MergedImage.Pieces(b));
+    }
+
+    [Fact]
+    public void A_file_that_ends_before_the_nvs_is_one_piece()
+    {
+        var b = Image(0x8000 + 0xC00);
+        Array.Resize(ref b, 0x9000);
+
+        Assert.Equal(new[] { new MergedImage.Piece(0, 0x9000) }, MergedImage.Pieces(b));
+    }
+
+    [Fact]
+    public void Split_writes_the_pieces_and_keeps_their_bytes()
+    {
+        var image = Image();
+        image[0] = 0xE9; image[0x10000] = 0xE9; image[0xE000] = 0x01;
+        var folder = Path.Combine(Path.GetTempPath(), "MergedImageTests-" + Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(folder, "fw-merged.bin");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllBytes(file, image);
+
+            var parts = MergedImage.Split(file, Path.Combine(folder, "parts"));
+
+            Assert.Equal(new[] { 0, 0xE000 }, parts.Select(p => p.Offset));
+            Assert.Equal(image.AsSpan(0, 0x9000).ToArray(), File.ReadAllBytes(parts[0].Path));
+            Assert.Equal(image.AsSpan(0xE000).ToArray(), File.ReadAllBytes(parts[1].Path));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_real_firmware_keeps_bootloader_table_and_app()
+    {
+        var release = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "firmware", "release");
+        var file = Directory.Exists(release) ? Directory.GetFiles(release, "*-merged.bin").OrderBy(f => f).LastOrDefault() : null;
+        if (file == null) return;   // release/ isn't in git; CI has no firmware here
+
+        var pieces = MergedImage.Pieces(File.ReadAllBytes(file));
+
+        Assert.Equal(0, pieces[0].Offset);
+        Assert.Equal(0x9000, pieces[0].Length);
+        Assert.Equal(0xE000, pieces[1].Offset);
+    }
 }
 
 public class FormattingTests
