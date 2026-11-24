@@ -111,6 +111,17 @@ python -m esptool --chip esp32s3 --port COM5 write-flash 0x0 yaesu-acc-firmware-
 with your board's COM port in place of COM5. Older versions of esptool, before
 5.0, spell it `write_flash`.
 
+Writing the whole merged file at 0 also clears the board's settings, its Wi-Fi
+network and SPI mode, because the file covers the NVS partition where they're
+kept (0x9000 to 0xDFFF). That's right for a new board. For an update, use ACC
+Firmware Flasher, which leaves that part out, or write the file in two pieces
+that skip it:
+
+```
+python -c "d=open('yaesu-acc-firmware-3.0.10-merged.bin','rb').read(); open('p0.bin','wb').write(d[:0x9000]); open('p1.bin','wb').write(d[0xE000:])"
+python -m esptool --chip esp32s3 --port COM5 write-flash 0x0 p0.bin 0xe000 p1.bin
+```
+
 Flash it, with the radio's DC lead out and the board's lead in the socket marked
 COM (COM5 on my PC; `platformio.ini` pins the port so PlatformIO never tries
 COM3 or COM4):

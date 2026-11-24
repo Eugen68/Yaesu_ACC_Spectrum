@@ -31,7 +31,23 @@ internal static partial class EspTool
     /// table and app in one) at address 0, as on the GitHub release.
     /// </summary>
     public static string[] WriteFlashArguments(string port, string firmware) =>
-        new[] { "--chip", "esp32s3", "--port", port, "--baud", "460800", "write-flash", "0x0", firmware };
+        WriteFlashArguments(port, new[] { (0, firmware) });
+
+    /// <summary>
+    /// The arguments to write several pieces in one go, each at its own flash
+    /// address: the pieces of a merged file either side of the board's settings
+    /// (see <see cref="MergedImage"/>).
+    /// </summary>
+    public static string[] WriteFlashArguments(string port, IEnumerable<(int Offset, string Path)> parts)
+    {
+        var args = new List<string> { "--chip", "esp32s3", "--port", port, "--baud", "460800", "write-flash" };
+        foreach (var (offset, path) in parts)
+        {
+            args.Add(offset == 0 ? "0x0" : $"0x{offset:x}");
+            args.Add(path);
+        }
+        return args.ToArray();
+    }
 
     /// <summary>The percentage in a line of esptool's progress, such as "Writing at 0x00010000 [===>   ] 35.2% 65536/185344 bytes...".</summary>
     public static double? ProgressIn(string line)

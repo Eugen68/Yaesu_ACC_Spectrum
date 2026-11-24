@@ -158,9 +158,14 @@ internal sealed class FlashForm : Form
         _running = new CancellationTokenSource();
         UpdateButtons();
         _progress.Value = 0;
+        // The merged file is written in pieces that leave out the board's
+        // settings (its Wi-Fi network and SPI mode), so they survive an update.
+        var parts = Path.Combine(Path.GetTempPath(), "AccFirmwareFlasher-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var args = EspTool.WriteFlashArguments(port.Name, firmware.Path);
+            var pieces = MergedImage.Split(firmware.Path, parts);
+            if (pieces.Count > 1) Log("Leaving out the board's settings, so it keeps its Wi-Fi network and SPI mode.");
+            var args = EspTool.WriteFlashArguments(port.Name, pieces);
             Log("esptool " + string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a)));
             int code = await EspTool.RunAsync(args, line => BeginInvoke(() => OnOutput(line)), _running.Token);
             Log(code == 0
@@ -177,8 +182,13 @@ internal sealed class FlashForm : Form
         {
             Log("Couldn't run esptool: " + ex.Message);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log("Couldn't read or split the firmware file: " + ex.Message);
+        }
         finally
         {
+            try { if (Directory.Exists(parts)) Directory.Delete(parts, recursive: true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             _running.Dispose();
             _running = null;
             UpdateButtons();
